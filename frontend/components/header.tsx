@@ -1,23 +1,44 @@
 'use client'
 
-import { useState } from 'react'
-import { Menu, Scissors, X, MapPin, Package, ShieldCheck, User as UserIcon, LogOut } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import Image from 'next/image'
+import { Building2, LogOut, Menu, Package, Phone, User as UserIcon, X } from 'lucide-react'
+import { getStudioUrl } from '@/lib/api'
 import { type Screen, type User } from './data'
 
 interface HeaderProps {
   currentScreen: Screen
   go: (s: Screen) => void
   user?: User | null
-  onOpenAuth?: () => void
+  isAuthLoading?: boolean
+  onOpenAuth?: (authType?: 'signin' | 'signup') => void
   onSignOut?: () => void
 }
 
-export function Header({ currentScreen, go, user, onOpenAuth, onSignOut }: HeaderProps) {
+export function Header({ currentScreen, go, user, isAuthLoading, onOpenAuth, onSignOut }: HeaderProps) {
   const [open, setOpen] = useState(false)
+  const [isHovered, setIsHovered] = useState(false)
+  const [isPinned, setIsPinned] = useState(false)
+  const dropdownRef = useRef<HTMLDivElement>(null)
+
+  const isDropdownOpen = isPinned || isHovered
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsPinned(false)
+        setIsHovered(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
 
   const nav = (s: Screen) => {
     go(s)
     setOpen(false)
+    setIsPinned(false)
+    setIsHovered(false)
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
@@ -49,143 +70,386 @@ export function Header({ currentScreen, go, user, onOpenAuth, onSignOut }: Heade
         </div>
 
         {/* Desktop Navigation Links */}
-        <nav className="hidden md:flex items-center gap-4 lg:gap-6 xl:gap-8 text-[13.5px] font-medium text-[#4B5563] shrink-0">
-          <button
-            onClick={() => nav('booking')}
-            className={`whitespace-nowrap shrink-0 transition-colors hover:text-[#0F1115] ${currentScreen === 'booking' ? 'text-[#0F1115] font-semibold' : ''}`}
-          >
-            Book a Tailor
-          </button>
-          <button
-            onClick={() => nav('how-it-works')}
-            className={`whitespace-nowrap shrink-0 transition-colors hover:text-[#0F1115] ${currentScreen === 'how-it-works' ? 'text-[#0F1115] font-semibold' : ''}`}
-          >
-            How it Works
-          </button>
-          <button
-            onClick={() => nav('about')}
-            className={`whitespace-nowrap shrink-0 transition-colors hover:text-[#0F1115] ${currentScreen === 'about' ? 'text-[#0F1115] font-semibold' : ''}`}
-          >
-            About Us
-          </button>
-          <button
-            onClick={() => nav('for-partners')}
-            className={`whitespace-nowrap shrink-0 transition-colors hover:text-[#0F1115] ${currentScreen === 'for-partners' ? 'text-[#0F1115] font-semibold' : ''}`}
-          >
-            For Studios
-          </button>
+        <nav className="hidden md:flex items-center gap-5 lg:gap-7 xl:gap-8 text-[13.5px] font-medium text-[#4B5563] shrink-0">
+          {user ? (
+            <>
+              <button
+                onClick={() => nav('book')}
+                className={`whitespace-nowrap shrink-0 transition-colors hover:text-[#0F1115] ${currentScreen === 'book' ? 'text-[#0F1115] font-bold' : ''}`}
+              >
+                Book Alterations
+              </button>
+              <button
+                onClick={() => nav('orders')}
+                className={`whitespace-nowrap shrink-0 transition-colors hover:text-[#0F1115] ${currentScreen === 'orders' || currentScreen === 'order' ? 'text-[#0F1115] font-bold' : ''}`}
+              >
+                My Orders
+              </button>
+              <button
+                onClick={() => nav('how-it-works')}
+                className={`whitespace-nowrap shrink-0 transition-colors hover:text-[#0F1115] ${currentScreen === 'how-it-works' ? 'text-[#0F1115] font-semibold' : ''}`}
+              >
+                How it Works
+              </button>
+              <button
+                onClick={() => nav('about')}
+                className={`whitespace-nowrap shrink-0 transition-colors hover:text-[#0F1115] ${currentScreen === 'about' ? 'text-[#0F1115] font-semibold' : ''}`}
+              >
+                About Us
+              </button>
+            </>
+          ) : isAuthLoading ? (
+            <div className="flex items-center gap-5 lg:gap-7 xl:gap-8 opacity-0 pointer-events-none select-none">
+              <span className="whitespace-nowrap">Book Alterations</span>
+              <span className="whitespace-nowrap">My Orders</span>
+              <span className="whitespace-nowrap">How it Works</span>
+              <span className="whitespace-nowrap">About Us</span>
+            </div>
+          ) : (
+            <>
+              <button
+                onClick={() => nav('how-it-works')}
+                className={`whitespace-nowrap shrink-0 transition-colors hover:text-[#0F1115] ${currentScreen === 'how-it-works' ? 'text-[#0F1115] font-semibold' : ''}`}
+              >
+                How it Works
+              </button>
+              <button
+                onClick={() => nav('about')}
+                className={`whitespace-nowrap shrink-0 transition-colors hover:text-[#0F1115] ${currentScreen === 'about' ? 'text-[#0F1115] font-semibold' : ''}`}
+              >
+                About Us
+              </button>
+              <button
+                onClick={() => nav('for-partners')}
+                className={`whitespace-nowrap shrink-0 transition-colors hover:text-[#0F1115] ${currentScreen === 'for-partners' ? 'text-[#0F1115] font-semibold' : ''}`}
+              >
+                For Studios
+              </button>
+            </>
+          )}
         </nav>
 
         {/* Right CTAs & User Auth */}
         <div className="hidden md:flex items-center gap-2.5 lg:gap-3 shrink-0">
-          <button
-            onClick={() => {
-              if (!user) {
-                onOpenAuth?.()
-              } else {
-                nav('orders')
-              }
-            }}
-            className="flex items-center gap-1.5 rounded-full px-3 lg:px-4 py-2 text-[13px] font-medium text-[#1E2229] hover:bg-[#F3EFEA] transition-colors whitespace-nowrap shrink-0"
-          >
-            <Package size={14} className="text-[#6B7280] shrink-0" />
-            <span>Track Order</span>
-          </button>
 
           {user ? (
-            <div className="flex items-center gap-1.5 border border-[#E5E7EB] rounded-full px-2.5 py-1 bg-[#FAF8F5] whitespace-nowrap shrink-0 hover:border-[#DDD6CB] transition-colors">
-              {user.avatar ? (
-                <img src={user.avatar} alt={user.name} className="size-5 rounded-full object-cover shrink-0" />
-              ) : (
-                <UserIcon size={12} className="text-[#9E593B] shrink-0" />
-              )}
-              <span className="text-[12px] font-semibold text-[#1E2229] max-w-[85px] sm:max-w-[100px] truncate block">
-                {user.name.split(' ')[0] || user.name}
-              </span>
-              {onSignOut && (
-                <button
-                  onClick={onSignOut}
-                  title="Sign out"
-                  className="p-0.5 hover:text-red-600 text-gray-400 transition-colors shrink-0"
+            <div
+              ref={dropdownRef}
+              className="relative shrink-0"
+              onMouseEnter={() => setIsHovered(true)}
+              onMouseLeave={() => setIsHovered(false)}
+            >
+              <button
+                type="button"
+                onClick={() => setIsPinned((prev) => !prev)}
+                className={`h-[34px] px-2.5 flex items-center gap-2 bg-white whitespace-nowrap cursor-pointer relative z-50 border border-[#E8E1D5] shadow-sm transition-colors outline-none focus:outline-none focus:ring-0 focus-visible:outline-none select-none ${isDropdownOpen
+                  ? 'rounded-t-2xl rounded-b-none border-b-transparent'
+                  : 'rounded-full hover:border-[#D5CDC2]'
+                  }`}
+                aria-expanded={isDropdownOpen}
+              >
+                <UserAvatar src={user.avatar} name={user.name} />
+                <span className="text-[13px] font-semibold text-[#18191B] max-w-[110px] truncate block">
+                  {user.name.split(' ')[0] || user.name}
+                </span>
+
+                {/* Left Concave Shoulder Curve & Seamless Bottom Bridge */}
+                {isDropdownOpen && (
+                  <>
+                    <div className="absolute inset-x-0 -bottom-[2px] h-[3px] bg-white z-50 pointer-events-none" />
+                    <InvertedCorner side="left" className="absolute -left-[16px] -bottom-[1px] z-50" />
+                  </>
+                )}
+              </button>
+
+              {/* Seamless Connected Dropdown Card (Flush right alignment) */}
+              {isDropdownOpen && (
+                <div
+                  className="absolute right-0 top-full -mt-[1px] w-72 rounded-2xl rounded-tr-none bg-white border border-[#E8E1D5] shadow-2xl p-3.5 z-40 animate-in fade-in duration-150"
+                  onMouseEnter={() => setIsHovered(true)}
+                  onMouseLeave={() => setIsHovered(false)}
                 >
-                  <LogOut size={12} />
-                </button>
+                  {/* Account Summary Header */}
+                  <div className="p-2.5 rounded-xl bg-[#FAF8F5] border border-[#E8E1D5]/70 flex items-center gap-3 mb-2">
+                    <UserAvatar src={user.avatar} name={user.name} />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[13px] font-bold text-[#18191B] truncate">{user.name}</p>
+                      {user.email && (
+                        <p className="text-[11.5px] text-[#5A5D64] truncate leading-tight mt-0.5">{user.email}</p>
+                      )}
+                      {user.phone && (
+                        <p className="text-[11px] text-[#065F46] font-semibold truncate flex items-center gap-1 mt-1">
+                          <Phone size={10} className="text-[#059669]" /> {user.phone}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Navigation Links */}
+                  <div className="space-y-1">
+                    {user?.role === 'STUDIO' && (
+                      <button
+                        onClick={() => {
+                          setIsPinned(false)
+                          setIsHovered(false)
+                          const token = typeof window !== 'undefined' ? localStorage.getItem('tg_token') : null
+                          window.location.href = getStudioUrl('/', token)
+                        }}
+                        className="w-full flex items-center gap-2.5 px-2.5 py-2.5 rounded-xl hover:bg-[#FAF8F5] text-[13px] font-semibold text-[#18191B] transition-colors text-left group"
+                      >
+                        <span className="size-6 rounded-lg bg-[#FAF8F5] group-hover:bg-white border border-[#E8E1D5]/80 grid place-items-center text-[#9E593B] shrink-0 transition-colors">
+                          <Building2 size={13} />
+                        </span>
+                        <span>Studio Dashboard</span>
+                      </button>
+                    )}
+
+                    <button
+                      onClick={() => {
+                        setIsPinned(false)
+                        setIsHovered(false)
+                        nav('profile')
+                      }}
+                      className="w-full flex items-center gap-2.5 px-2.5 py-2.5 rounded-xl hover:bg-[#FAF8F5] text-[13px] font-semibold text-[#18191B] transition-colors text-left group"
+                    >
+                      <span className="size-6 rounded-lg bg-[#FAF8F5] group-hover:bg-white border border-[#E8E1D5]/80 grid place-items-center text-[#9E593B] shrink-0 transition-colors">
+                        <UserIcon size={13} />
+                      </span>
+                      <span>My Profile</span>
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        setIsPinned(false)
+                        setIsHovered(false)
+                        nav('orders')
+                      }}
+                      className="w-full flex items-center gap-2.5 px-2.5 py-2.5 rounded-xl hover:bg-[#FAF8F5] text-[13px] font-semibold text-[#18191B] transition-colors text-left group"
+                    >
+                      <span className="size-6 rounded-lg bg-[#FAF8F5] group-hover:bg-white border border-[#E8E1D5]/80 grid place-items-center text-[#9E593B] shrink-0 transition-colors">
+                        <Package size={13} />
+                      </span>
+                      <span>My Orders</span>
+                    </button>
+                  </div>
+
+                  {onSignOut && (
+                    <div className="pt-2 mt-1.5 border-t border-[#F3EFEA]">
+                      <button
+                        onClick={() => {
+                          setIsPinned(false)
+                          setIsHovered(false)
+                          onSignOut()
+                        }}
+                        className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-[13px] font-semibold text-red-600 hover:bg-red-50 transition-colors text-left group"
+                      >
+                        <span className="size-6 rounded-lg bg-red-50 group-hover:bg-red-100/80 grid place-items-center text-red-600 shrink-0 transition-colors">
+                          <LogOut size={12} />
+                        </span>
+                        <span>Sign Out</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
               )}
             </div>
+          ) : isAuthLoading ? (
+            <div className="h-[34px] w-[96px] rounded-full bg-[#E8E1D5]/40 animate-pulse" />
           ) : (
-            <button
-              onClick={onOpenAuth}
-              className="flex items-center gap-2 rounded-full border border-[#0F1115] px-4 py-2 text-[13px] font-semibold text-[#0F1115] hover:bg-[#0F1115] hover:text-white transition-all whitespace-nowrap shrink-0"
-            >
-              <UserIcon size={14} className="shrink-0" />
-              <span>Sign In / Up</span>
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => onOpenAuth?.('signin')}
+                className="flex items-center gap-1.5 rounded-full border border-[#E8E1D5] bg-white px-3.5 py-2 text-[13px] font-semibold text-[#18191B] hover:bg-[#F3EFEA] hover:border-[#0F1115] transition-all whitespace-nowrap shrink-0 shadow-2xs cursor-pointer"
+              >
+                <UserIcon size={13} className="shrink-0 text-[#9E593B]" />
+                <span>Log In</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => onOpenAuth?.('signup')}
+                className="flex items-center gap-1.5 rounded-full bg-[#0F1115] px-4 py-2 text-[13px] font-semibold text-white hover:bg-[#9E593B] transition-all whitespace-nowrap shrink-0 shadow-xs active:scale-[0.98] cursor-pointer"
+              >
+                <span>Sign Up</span>
+              </button>
+            </div>
           )}
-
-          <button
-            onClick={() => nav('booking')}
-            className="rounded-full bg-[#0F1115] px-4 lg:px-5 py-2.5 text-[13px] font-semibold text-white shadow-sm hover:bg-[#9E593B] transition-all active:scale-95 whitespace-nowrap shrink-0"
-          >
-            Book Now
-          </button>
         </div>
 
-        {/* Mobile menu trigger */}
-        <button
-          className="md:hidden p-2 rounded-lg text-[#0F1115] hover:bg-[#F3EFEA] transition-colors"
-          onClick={() => setOpen(!open)}
-          aria-label="Menu"
-        >
-          {open ? <X size={22} /> : <Menu size={22} />}
-        </button>
+        {/* Mobile Hamburger Toggle */}
+        <div className="flex md:hidden items-center gap-2">
+          {user ? (
+            <button
+              onClick={() => nav('profile')}
+              className="size-8 rounded-full border border-[#E8E1D5] overflow-hidden"
+              aria-label="Profile"
+            >
+              <UserAvatar src={user.avatar} name={user.name} />
+            </button>
+          ) : isAuthLoading ? (
+            <div className="size-8 rounded-full bg-[#E8E1D5]/40 animate-pulse" />
+          ) : null}
+          <button
+            onClick={() => setOpen(!open)}
+            className="size-9 rounded-full bg-white border border-[#E8E1D5] grid place-items-center text-[#18191B]"
+            aria-label="Toggle menu"
+          >
+            {open ? <X size={18} /> : <Menu size={18} />}
+          </button>
+        </div>
       </div>
 
-      {/* Mobile Menu Dropdown */}
+      {/* Mobile Menu */}
       {open && (
-        <div className="md:hidden border-t border-[#E8E1D5] bg-[#FAF8F5] px-5 py-5 flex flex-col gap-3 shadow-lg">
-          <div className="flex items-center justify-between pb-3 border-b border-[#E8E1D5]">
-            <div className="flex items-center gap-2 text-xs font-semibold text-[#1E2229]">
-              <ShieldCheck size={14} className="text-[#9E593B]" />
-              <span>Audited Craft Standards</span>
+        <div className="md:hidden border-t border-[#E8E1D5] bg-[#FAF8F5] px-6 py-4 space-y-3 animate-in slide-in-from-top-2 duration-200">
+          {user ? (
+            <>
+              {user.role === 'STUDIO' && (
+                <button
+                  onClick={() => {
+                    setOpen(false)
+                    const token = typeof window !== 'undefined' ? localStorage.getItem('tg_token') : null
+                    window.location.href = getStudioUrl('/', token)
+                  }}
+                  className="flex items-center justify-between py-2.5 text-left text-[14.5px] font-medium text-[#1E2229] hover:text-[#9E593B] transition-colors"
+                >
+                  <span className="flex items-center gap-2">
+                    <Building2 size={16} className="text-[#9E593B]" />
+                    Studio Dashboard
+                  </span>
+                  <span className="text-[#9CA3AF]">→</span>
+                </button>
+              )}
+              {[
+                { label: 'Book Alterations', screen: 'book' as Screen },
+                { label: 'My Orders', screen: 'orders' as Screen },
+                { label: 'My Profile', screen: 'profile' as Screen },
+                { label: 'How it Works', screen: 'how-it-works' as Screen },
+                { label: 'About Us', screen: 'about' as Screen },
+              ].map((item) => (
+                <button
+                  key={item.label}
+                  onClick={() => nav(item.screen)}
+                  className="flex items-center justify-between py-2.5 text-left text-[14.5px] font-medium text-[#1E2229] hover:text-[#9E593B] transition-colors"
+                >
+                  <span>{item.label}</span>
+                  <span className="text-[#9CA3AF]">→</span>
+                </button>
+              ))}
+            </>
+          ) : isAuthLoading ? (
+            <div className="py-6 flex justify-center items-center">
+              <div className="size-5 rounded-full border-2 border-[#9E593B] border-t-transparent animate-spin" />
             </div>
-            <span className="text-[11px] px-2 py-0.5 rounded bg-[#ECFDF5] text-[#065F46] font-medium">Certified</span>
-          </div>
+          ) : (
+            <>
+              {[
+                { label: 'How it Works', screen: 'how-it-works' as Screen },
+                { label: 'About Us', screen: 'about' as Screen },
+                { label: 'For Studios & Partners', screen: 'for-partners' as Screen },
+              ].map((item) => (
+                <button
+                  key={item.label}
+                  onClick={() => {
+                    if (item.screen === 'orders' && !user && onOpenAuth) {
+                      setOpen(false)
+                      onOpenAuth('signin')
+                    } else {
+                      nav(item.screen)
+                    }
+                  }}
+                  className="flex items-center justify-between py-2.5 text-left text-[14.5px] font-medium text-[#1E2229] hover:text-[#9E593B] transition-colors"
+                >
+                  <span>{item.label}</span>
+                  <span className="text-[#9CA3AF]">→</span>
+                </button>
+              ))}
 
-          {[
-            { label: 'Book a Fitting', screen: 'booking' as Screen },
-            { label: 'How it Works', screen: 'how-it-works' as Screen },
-            { label: 'Track My Orders', screen: 'orders' as Screen },
-            { label: 'About Us', screen: 'about' as Screen },
-            { label: 'For Studios & Partners', screen: 'for-partners' as Screen },
-          ].map((item) => (
-            <button
-              key={item.label}
-              onClick={() => {
-                if (item.screen === 'orders' && !user && onOpenAuth) {
-                  setOpen(false)
-                  onOpenAuth()
-                } else {
-                  nav(item.screen)
-                }
-              }}
-              className="flex items-center justify-between py-2.5 text-left text-[14.5px] font-medium text-[#1E2229] hover:text-[#9E593B] transition-colors"
-            >
-              <span>{item.label}</span>
-              <span className="text-[#9CA3AF]">→</span>
-            </button>
-          ))}
-
-          <div className="pt-3 border-t border-[#E8E1D5] flex flex-col gap-2">
-            <button
-              onClick={() => nav('booking')}
-              className="w-full rounded-full bg-[#0F1115] py-3 text-center text-[13.5px] font-semibold text-white shadow-sm"
-            >
-              Book Fitting Pass
-            </button>
-          </div>
+              <div className="pt-3 mt-2 border-t border-[#E8E1D5]/70 flex flex-col gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOpen(false)
+                    onOpenAuth?.('signin')
+                  }}
+                  className="w-full flex items-center justify-center gap-2 border border-[#E8E1D5] bg-white rounded-xl py-2.5 text-center text-xs font-semibold text-[#18191B] hover:bg-[#F3EFEA] transition-all cursor-pointer shadow-2xs"
+                >
+                  <UserIcon size={14} className="text-[#9E593B]" />
+                  <span>Log In</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOpen(false)
+                    onOpenAuth?.('signup')
+                  }}
+                  className="w-full flex items-center justify-center gap-2 bg-[#0F1115] hover:bg-[#9E593B] rounded-xl py-2.5 text-center text-xs font-semibold text-white transition-all shadow-xs cursor-pointer active:scale-[0.99]"
+                >
+                  <span>Sign Up</span>
+                </button>
+              </div>
+            </>
+          )}
         </div>
       )}
     </header>
   )
 }
 
+function UserAvatar({ src, name }: { src?: string | null; name?: string }) {
+  const [failed, setFailed] = useState(false)
+  const initial = (name || 'U')[0].toUpperCase()
+
+  if (!src || failed) {
+    return (
+      <div className="size-6 rounded-full bg-[#0F1115] text-white text-[10px] font-bold grid place-items-center shrink-0">
+        {initial}
+      </div>
+    )
+  }
+
+  return (
+    <div className="size-6 rounded-full overflow-hidden shrink-0 border border-[#E8E1D5] relative">
+      <Image
+        src={src}
+        alt={name || 'User'}
+        width={24}
+        height={24}
+        referrerPolicy="no-referrer"
+        crossOrigin="anonymous"
+        onError={() => setFailed(true)}
+        className="size-full object-cover"
+      />
+    </div>
+  )
+}
+
+function InvertedCorner({ side, className = '' }: { side: 'left' | 'right'; className?: string }) {
+  if (side === 'left') {
+    return (
+      <svg
+        width="16"
+        height="16"
+        viewBox="0 0 16 16"
+        fill="none"
+        className={`pointer-events-none ${className}`}
+      >
+        <path d="M16 0 C16 8.837 8.837 16 0 16 H16.5 V0 Z" fill="white" />
+        <path d="M16 0 C16 8.837 8.837 16 0 16" stroke="#E8E1D5" strokeWidth="1" fill="none" />
+      </svg>
+    )
+  }
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 16 16"
+      fill="none"
+      className={`pointer-events-none ${className}`}
+      style={{ transform: 'translateY(1px)' }}
+    >
+      <path d="M0 0 C0 8.837 7.163 16 16 16 H0 V0 Z" fill="white" />
+      <path d="M0 0 C0 8.837 7.163 16 16 16" stroke="#E8E1D5" strokeWidth="1" fill="none" />
+    </svg>
+  )
+}

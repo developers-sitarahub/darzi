@@ -4,6 +4,7 @@ import { useState } from 'react'
 import {
   ArrowRight,
   CheckCircle2,
+  Loader2,
   Mail,
   MapPin,
   Phone,
@@ -12,10 +13,17 @@ import {
   X,
 } from 'lucide-react'
 import { type Screen } from './data'
+import { useApp } from './app-provider'
+import { getAuthRole } from '@/lib/cookies'
+import { subscribeNewsletter } from '@/lib/api'
 
 export function Footer({ go }: { go: (s: Screen) => void }) {
+  const { user } = useApp()
+  const isCustomer = Boolean(user && user.role === 'CUSTOMER')
   const [email, setEmail] = useState('')
   const [subscribed, setSubscribed] = useState(false)
+  const [subscribing, setSubscribing] = useState(false)
+  const [subscribeError, setSubscribeError] = useState<string | null>(null)
   const [activeModal, setActiveModal] = useState<'privacy' | 'terms' | 'guarantee' | 'contact' | null>(null)
 
   const nav = (s: Screen) => {
@@ -23,13 +31,28 @@ export function Footer({ go }: { go: (s: Screen) => void }) {
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
-  const handleSubscribe = (e: React.FormEvent) => {
+  const handleSubscribe = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (email.trim()) {
-      setSubscribed(true)
-      setTimeout(() => {
-        setEmail('')
-      }, 3500)
+    if (!email.trim() || subscribing) return
+
+    setSubscribing(true)
+    setSubscribeError(null)
+
+    try {
+      const result = await subscribeNewsletter(email.trim(), 'footer')
+      if (result.success) {
+        setSubscribed(true)
+        setTimeout(() => {
+          setEmail('')
+          setSubscribed(false)
+        }, 5000)
+      } else {
+        setSubscribeError(result.error || 'Failed to subscribe')
+      }
+    } catch {
+      setSubscribeError('Unable to connect to server. Please try again.')
+    } finally {
+      setSubscribing(false)
     }
   }
 
@@ -47,37 +70,51 @@ export function Footer({ go }: { go: (s: Screen) => void }) {
                 <img src="/landscape_logo.jpeg" alt="Darzi Logo" className="h-10 sm:h-12 w-auto object-contain rounded-lg" />
               </div>
               <p className="text-xs sm:text-sm text-[#9CA3AF] leading-relaxed mb-6 max-w-[320px]">
-                On-demand master tailoring and alterations network. Guaranteed fit, upfront fixed rates, and doorstep service.
+                Professional clothing alterations and tailoring. Guaranteed perfect fit, upfront clear prices, and easy local service.
               </p>
 
               {/* Newsletter Subscription */}
               <div className="pt-1">
                 <p className="text-[11px] font-semibold uppercase tracking-wider text-[#D1D5DB] mb-2">
-                  Join the Sartorial Club
+                  Subscribe for Offers &amp; Updates
                 </p>
                 {subscribed ? (
                   <div className="flex items-center gap-2 rounded-xl bg-[#064E3B]/30 border border-[#065F46] p-2.5 text-xs text-[#34D399]">
                     <CheckCircle2 size={15} />
-                    <span>You&apos;re on the priority list for $10 off first fitting.</span>
+                    <span>Thank you for subscribing! You&apos;ll receive our latest offers and updates.</span>
                   </div>
                 ) : (
-                  <form onSubmit={handleSubscribe} className="flex items-center gap-2 max-w-[320px]">
-                    <input
-                      type="email"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      placeholder="Enter your email"
-                      required
-                      className="flex-1 rounded-xl border border-[#2D333D] bg-[#1A1E24] px-3 py-2 text-xs text-white placeholder:text-[#6B7280] focus:border-[#9E593B] focus:outline-none transition-colors"
-                    />
-                    <button
-                      type="submit"
-                      className="rounded-xl bg-white px-3.5 py-2 text-xs font-bold text-[#0F1115] hover:bg-[#FAF8F5] transition-all active:scale-95 flex items-center justify-center shrink-0"
-                      aria-label="Subscribe"
-                    >
-                      <ArrowRight size={14} />
-                    </button>
-                  </form>
+                  <div className="space-y-1.5">
+                    <form onSubmit={handleSubscribe} className="flex items-center gap-2 max-w-[320px]">
+                      <input
+                        type="email"
+                        value={email}
+                        onChange={(e) => {
+                          setEmail(e.target.value)
+                          if (subscribeError) setSubscribeError(null)
+                        }}
+                        placeholder="Enter your email"
+                        required
+                        disabled={subscribing}
+                        className="flex-1 rounded-xl border border-[#2D333D] bg-[#1A1E24] px-3 py-2 text-xs text-white placeholder:text-[#6B7280] focus:border-[#9E593B] focus:outline-none transition-colors disabled:opacity-60"
+                      />
+                      <button
+                        type="submit"
+                        disabled={subscribing}
+                        className="rounded-xl bg-white px-3.5 py-2 text-xs font-bold text-[#0F1115] hover:bg-[#FAF8F5] transition-all active:scale-95 flex items-center justify-center shrink-0 disabled:opacity-60"
+                        aria-label="Subscribe"
+                      >
+                        {subscribing ? (
+                          <Loader2 size={14} className="animate-spin text-[#0F1115]" />
+                        ) : (
+                          <ArrowRight size={14} />
+                        )}
+                      </button>
+                    </form>
+                    {subscribeError && (
+                      <p className="text-[11px] text-red-400 pl-1">{subscribeError}</p>
+                    )}
+                  </div>
                 )}
               </div>
             </div>
@@ -91,14 +128,14 @@ export function Footer({ go }: { go: (s: Screen) => void }) {
                 {[
                   'Trousers & Jeans Alterations',
                   'Suits & Blazer Tailoring',
-                  'Dresses & Gown Contouring',
-                  'Waist Suppression & Tapering',
+                  'Dresses & Gowns Fitting',
+                  'Waist & Slimming Adjustments',
                   'Ethnic & Occasion Wear',
-                  'Invisible Zip & Repair',
+                  'Zip & Garment Repairs',
                 ].map((serviceName) => (
                   <li key={serviceName}>
                     <button
-                      onClick={() => nav('booking')}
+                      onClick={() => nav('home')}
                       className="hover:text-white transition-colors text-left block"
                     >
                       {serviceName}
@@ -114,8 +151,8 @@ export function Footer({ go }: { go: (s: Screen) => void }) {
               <ul className="space-y-2.5 text-xs text-[#9CA3AF]">
                 <li><button onClick={() => nav('about')} className="hover:text-white transition-colors">About Darzi</button></li>
                 <li><button onClick={() => nav('how-it-works')} className="hover:text-white transition-colors">How It Works</button></li>
-                <li><button onClick={() => nav('for-partners')} className="hover:text-white transition-colors">Partner With Us</button></li>
-                <li><button onClick={() => nav('orders')} className="hover:text-white transition-colors">Digital Fit Passport</button></li>
+                <li><button onClick={() => isCustomer ? nav('book') : nav('for-partners')} className="hover:text-white transition-colors">{isCustomer ? 'Book Alterations' : 'Partner With Us'}</button></li>
+                <li><button onClick={() => nav('orders')} className="hover:text-white transition-colors">Saved Fit Profile</button></li>
               </ul>
             </div>
 
@@ -125,24 +162,26 @@ export function Footer({ go }: { go: (s: Screen) => void }) {
                 Portals & Help
               </h5>
               <ul className="space-y-2 text-xs text-[#9CA3AF]">
+                {!isCustomer && (
+                  <li>
+                    <button onClick={() => nav('partner')} className="hover:text-white transition-colors text-left cursor-pointer">
+                      Tailor Partner Portal
+                    </button>
+                  </li>
+                )}
                 <li>
-                  <button onClick={() => nav('orders')} className="hover:text-white transition-colors text-left">
-                    Track Orders
+                  <button onClick={() => nav('contact')} className="hover:text-white transition-colors text-left cursor-pointer">
+                    Contact Concierge
                   </button>
                 </li>
                 <li>
-                  <button onClick={() => nav('partner')} className="hover:text-white transition-colors text-left">
-                    Partner Studio Portal
+                  <button onClick={() => nav('support')} className="hover:text-white transition-colors text-left cursor-pointer">
+                    Support &amp; FAQ
                   </button>
                 </li>
                 <li>
-                  <button onClick={() => nav('admin')} className="hover:text-white transition-colors text-left">
-                    Operations Admin
-                  </button>
-                </li>
-                <li>
-                  <button onClick={() => setActiveModal('contact')} className="hover:text-white transition-colors text-left">
-                    Contact & Support
+                  <button onClick={() => nav('privacy')} className="hover:text-white transition-colors text-left cursor-pointer">
+                    Customer Privacy Policy
                   </button>
                 </li>
               </ul>
@@ -153,17 +192,29 @@ export function Footer({ go }: { go: (s: Screen) => void }) {
 
         {/* Bottom */}
         <div className="mt-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-[#6B7280]">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <span>© {new Date().getFullYear()} Darzi Technologies Ltd.</span>
+            <span>·</span>
+            <button onClick={() => nav('privacy')} className="hover:text-white transition-colors cursor-pointer">
+              Privacy Policy
+            </button>
+            <span>·</span>
+            <button onClick={() => nav('support')} className="hover:text-white transition-colors cursor-pointer">
+              Support
+            </button>
+            <span>·</span>
+            <button onClick={() => nav('contact')} className="hover:text-white transition-colors cursor-pointer">
+              Contact
+            </button>
             <span>·</span>
             <span className="flex items-center gap-1 text-[#10B981]"><ShieldCheck size={13} /> 100% Fit Guarantee</span>
           </div>
           <div className="flex items-center gap-4">
-            <span className="flex items-center gap-1"><MapPin size={12} /> London</span>
+            <span className="flex items-center gap-1"><MapPin size={12} /> Mumbai</span>
             <span>·</span>
-            <span>Manchester</span>
+            <span>Pune</span>
             <span>·</span>
-            <span>Birmingham</span>
+            <span>London</span>
           </div>
 
         </div>

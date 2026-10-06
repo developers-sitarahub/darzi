@@ -1,226 +1,216 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import {
-  ArrowLeft,
-  ArrowRight,
-  CheckCircle2,
-  Layers,
-  LogIn,
-  Package,
-  Scissors,
-  ShieldCheck,
-  Sparkles,
-  Store,
-  TrendingUp,
-  Zap,
-} from 'lucide-react'
-import { makeOtp, type Screen, type User } from '@/components/data'
+import { useRouter } from 'next/navigation'
+import { ToastContainer, toast } from 'react-toastify'
+import 'react-toastify/dist/ReactToastify.css'
+import { makeOtp, type User } from '@/components/data'
 import { StudioHeader } from '@/components/studio-header'
-import { PartnerFlow } from '@/components/partner-flow'
-import { AuthModal } from '@/components/auth-modal'
-import { getCurrentUser, CUSTOMER_SITE_URL } from '@/lib/api'
+import { PartnerFlow, type StudioTab } from '@/components/partner-flow'
+import { PartnerOnboarding } from '@/components/partner-onboarding'
+import { CustomLoader } from '@/components/custom-loader'
+import { getCurrentUser, CUSTOMER_SITE_URL, logoutUser } from '@/lib/api'
+import { getAuthUser, setAuthUser, getAuthRole, setAuthRole, clearAllAuth } from '@/lib/cookies'
 
 export default function StudioPage() {
-  const [user, setUser] = useState<User | null>(null)
-  const [isAuthOpen, setIsAuthOpen] = useState(false)
-  const [authType, setAuthType] = useState<'signin' | 'signup'>('signin')
+  const router = useRouter()
+  const [user, setUser] = useState<User | null>(() => {
+    if (typeof window !== 'undefined') {
+      const cached = getAuthUser<User>()
+      const role = getAuthRole()
+      if (cached && (cached.role === 'STUDIO' || cached.role === 'TEMP_STUDIO' || role === 'TEMP_STUDIO' || role === 'STUDIO')) {
+        const roleToUse: 'STUDIO' | 'TEMP_STUDIO' = (cached.role === 'STUDIO' || role === 'STUDIO') ? 'STUDIO' : 'TEMP_STUDIO'
+        return { ...cached, role: roleToUse }
+      }
+    }
+    return null
+  })
+  const [partnerTab, setPartnerTab] = useState<StudioTab>('cockpit')
   const [otp] = useState(() => makeOtp())
-  const [loadingUser, setLoadingUser] = useState(true)
+  const [loadingUser, setLoadingUser] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      const cached = getAuthUser<User>()
+      const role = getAuthRole()
+      if (cached && (cached.role === 'STUDIO' || cached.role === 'TEMP_STUDIO' || role === 'TEMP_STUDIO' || role === 'STUDIO')) {
+        return false
+      }
+    }
+    return true
+  })
 
   const customerSiteUrl = CUSTOMER_SITE_URL
 
-  // Token handover from main website (port 3000 -> port 3001)
   useEffect(() => {
+    // 1. If single-use auth code or token is passed in query, forward immediately to callback
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search)
-      const token = params.get('token')
-      if (token) {
-        localStorage.setItem('tg_token', token)
-        localStorage.setItem('tg_user_role', 'STUDIO')
-        // Clean URL query params
-        window.history.replaceState({}, '', window.location.pathname)
+      if (params.has('code') || params.has('token')) {
+        window.location.replace('/auth/callback' + window.location.search)
+        return
       }
     }
 
+    // 2. Fetch authenticated studio user
     getCurrentUser()
       .then((u) => {
-        if (u) setUser(u)
+        if (u) {
+          const currentRole = getAuthRole()
+          const effectiveRole: 'STUDIO' | 'TEMP_STUDIO' = (u.role === 'STUDIO' || currentRole === 'STUDIO') ? 'STUDIO' : 'TEMP_STUDIO'
+          const finalUser: User = { ...u, role: effectiveRole }
+          setUser(finalUser)
+          setAuthRole(effectiveRole)
+          setAuthUser(finalUser)
+        } else {
+          setUser(null)
+          clearAllAuth()
+        }
+      })
+      .catch(() => {
+        setUser(null)
+        clearAllAuth()
       })
       .finally(() => {
         setLoadingUser(false)
       })
   }, [])
 
-  const handleOpenAuth = (type: 'signin' | 'signup' = 'signin') => {
-    setAuthType(type)
-    setIsAuthOpen(true)
-  }
+  // 3. Strict Role-based Redirection
+  useEffect(() => {
+    if (!loadingUser) {
+      if (!user || (user.role !== 'STUDIO' && user.role !== 'TEMP_STUDIO')) {
+        // Unauthenticated or customer: redirect to main website
+        if (typeof window !== 'undefined') {
+          window.location.replace(customerSiteUrl)
+        }
+        return
+      }
+
+      // Active & complete Studio partner: redirect directly to dashboard
+      if (user.role === 'STUDIO' && user.status === 'ACTIVE' && user.studioName && user.phone) {
+        router.replace('/dashboard')
+      }
+    }
+  }, [loadingUser, user, router, customerSiteUrl])
 
   const handleAuthSuccess = (loggedUser: User) => {
-    setUser(loggedUser)
-    setIsAuthOpen(false)
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('tg_user_role', 'STUDIO')
+    if (loggedUser.role !== 'STUDIO') {
+      toast.error('Unauthorized user, access denied.', { position: 'top-center' })
+      if (typeof window !== 'undefined') {
+        window.location.replace(customerSiteUrl)
+      }
+      return
     }
+    setUser(loggedUser)
+    setAuthRole('STUDIO')
+    setAuthUser(loggedUser)
+    toast.success(`Authenticated as ${loggedUser.name || 'Studio Partner'}!`, { position: 'top-center' })
   }
 
-  const handleSignOut = () => {
-    if (typeof window !== 'undefined') {
-      localStorage.removeItem('tg_token')
-      localStorage.removeItem('tg_user_role')
+  const handleUpdateUser = (updated: User) => {
+    setUser(updated)
+    setAuthUser(updated)
+    toast.success('Studio profile updated successfully!', { position: 'top-center' })
+  }
+
+  const handleSignOut = async () => {
+    try {
+      await logoutUser()
+    } catch {
+      clearAllAuth()
     }
     setUser(null)
+    if (typeof window !== 'undefined') {
+      window.location.replace(customerSiteUrl)
+    }
   }
 
-  return (
-    <div className="min-h-screen flex flex-col bg-[#FAF8F5] text-[#18191B]">
-      
-      {/* Studio Header (Port 3001) */}
-      <StudioHeader
-        user={user}
-        onOpenAuth={handleOpenAuth}
-        onSignOut={handleSignOut}
-      />
+  // ── Loading state or Redirecting to Customer Portal ──
+  if (loadingUser || !user || (user.role !== 'STUDIO' && user.role !== 'TEMP_STUDIO')) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-[#FAF8F5] text-[#18191B] p-6">
+        <CustomLoader
+          size="lg"
+          variant="atelier"
+          text={user ? 'Connecting to Workbench' : 'Redirecting to Darzi...'}
+          steps={[
+            'Verifying Partner Permissions',
+            'Syncing Workbench Workspace',
+            'Connecting to Partner Network',
+          ]}
+          subtext={user ? 'Loading tailor workbench telemetry…' : 'Studio access is restricted to verified partner accounts.'}
+        />
+        <ToastContainer
+          position="top-center"
+          autoClose={2500}
+          hideProgressBar={false}
+          newestOnTop
+          closeOnClick
+          rtl={false}
+          pauseOnFocusLoss={false}
+          draggable
+          pauseOnHover
+          theme="colored"
+        />
+      </div>
+    )
+  }
 
-      <main className="flex-1">
-        {user ? (
-          /* Active Studio Workbench Dashboard */
+  const isProfileComplete = Boolean(
+    user.role === 'STUDIO' &&
+    user.status === 'ACTIVE' &&
+    user.studioName &&
+    user.phone
+  )
+
+  return (
+    <div className="min-h-screen flex flex-col bg-[#F8FAFC] text-[#0F172A]">
+      {!isProfileComplete && (
+        <StudioHeader
+          user={user}
+          onSignOut={handleSignOut}
+          onOpenProfile={() => setPartnerTab('profile')}
+        />
+      )}
+
+      <main className="flex-1 flex flex-col">
+        {isProfileComplete ? (
           <PartnerFlow
-            go={() => {}}
+            go={() => { }}
             otp={otp}
             user={user}
             onSignOut={handleSignOut}
+            onOpenProfile={() => setPartnerTab('profile')}
+            onUpdateUser={handleUpdateUser}
+            activeTab={partnerTab}
+            onTabChange={setPartnerTab}
           />
         ) : (
-          /* Studio Portal Sign-In / Landing View */
-          <div className="py-12 sm:py-20 px-4 sm:px-6 lg:px-8">
-            <div className="mx-auto max-w-[1040px]">
-              
-              {/* Hero Banner */}
-              <div className="rounded-3xl bg-[#0F1115] text-white p-8 sm:p-14 shadow-2xl relative overflow-hidden">
-                <div className="relative z-10 max-w-[620px]">
-                  <div className="inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1 text-xs font-semibold text-[#E7C9BA] border border-white/15 mb-4">
-                    <Store size={14} />
-                    <span>Darzi Certified Partner Network · Port 3001</span>
-                  </div>
-
-                  <h1 className="font-serif text-3xl sm:text-5xl font-black tracking-tight leading-[1.15] text-white">
-                    Master Tailor Workshop Workbench.
-                  </h1>
-
-                  <p className="mt-4 text-sm sm:text-base text-white/70 leading-relaxed">
-                    Live alteration intake with 4-digit customer PIN verification, digital hang tags, 48h SLA timers, machine capacity controls, and guaranteed weekly payouts.
-                  </p>
-
-                  <div className="mt-8 flex flex-wrap items-center gap-4">
-                    <button
-                      onClick={() => handleOpenAuth('signin')}
-                      className="inline-flex items-center gap-2 rounded-full bg-white px-7 py-3.5 text-xs font-extrabold uppercase tracking-wider text-[#0F1115] hover:bg-[#FAF8F5] shadow-md transition-all active:scale-95"
-                    >
-                      <LogIn size={15} />
-                      <span>Studio Log In</span>
-                    </button>
-
-                    <button
-                      onClick={() => handleOpenAuth('signup')}
-                      className="inline-flex items-center gap-2 rounded-full border border-white/30 px-6 py-3.5 text-xs font-bold uppercase tracking-wider text-white hover:bg-white/10 transition-colors"
-                    >
-                      <span>Register New Atelier</span>
-                      <ArrowRight size={14} />
-                    </button>
-                  </div>
-
-                  <div className="mt-8 pt-6 border-t border-white/15 flex items-center gap-6 text-xs text-white/60">
-                    <span className="flex items-center gap-1.5"><ShieldCheck size={14} className="text-[#10B981]" /> 100% Pre-paid</span>
-                    <span className="flex items-center gap-1.5"><TrendingUp size={14} className="text-[#F59E0B]" /> Weekly Bank Settlements</span>
-                  </div>
-                </div>
-
-                {/* Background Decor */}
-                <div className="absolute right-0 top-1/2 -translate-y-1/2 w-96 h-96 rounded-full bg-[#9E593B]/20 blur-3xl pointer-events-none" />
-              </div>
-
-              {/* 3 Value Pillars */}
-              <div className="mt-10 grid sm:grid-cols-3 gap-6">
-                <div className="rounded-2xl border border-[#DDD6CB] bg-white p-6 shadow-xs">
-                  <div className="size-10 rounded-xl bg-[#F4EFEA] text-[#9E593B] grid place-items-center mb-3">
-                    <Package size={20} />
-                  </div>
-                  <h3 className="font-serif text-lg font-bold text-[#0F1115]">PIN Order Intake</h3>
-                  <p className="text-xs text-[#5A5D64] mt-1 leading-relaxed">
-                    Verify customer 4-digit drop-off codes in under 10 seconds. Auto-generate hang tags and capture intake condition photos.
-                  </p>
-                </div>
-
-                <div className="rounded-2xl border border-[#DDD6CB] bg-white p-6 shadow-xs">
-                  <div className="size-10 rounded-xl bg-[#F4EFEA] text-[#9E593B] grid place-items-center mb-3">
-                    <Zap size={20} />
-                  </div>
-                  <h3 className="font-serif text-lg font-bold text-[#0F1115]">Broadcast Jobs</h3>
-                  <p className="text-xs text-[#5A5D64] mt-1 leading-relaxed">
-                    Receive instant nearby alteration broadcast requests when you have idle machines. 1-click accept at fixed guaranteed payouts.
-                  </p>
-                </div>
-
-                <div className="rounded-2xl border border-[#DDD6CB] bg-white p-6 shadow-xs">
-                  <div className="size-10 rounded-xl bg-[#F4EFEA] text-[#9E593B] grid place-items-center mb-3">
-                    <Layers size={20} />
-                  </div>
-                  <h3 className="font-serif text-lg font-bold text-[#0F1115]">Capacity Management</h3>
-                  <p className="text-xs text-[#5A5D64] mt-1 leading-relaxed">
-                    Adjust daily piece limits and assign specific alterations to active machines and tailors on your team.
-                  </p>
-                </div>
-              </div>
-
-              {/* Demo Action & Customer Site Link */}
-              <div className="mt-8 p-6 rounded-2xl bg-[#F4EFEA] border border-[#DDD6CB] flex flex-col sm:flex-row items-center justify-between gap-4 text-center sm:text-left">
-                <div>
-                  <span className="font-serif font-bold text-base text-[#0F1115] block">
-                    Want to test without signing up?
-                  </span>
-                  <span className="text-xs text-[#5A5D64]">
-                    Launch the interactive master tailor sandbox to try order verification and tailoring timers.
-                  </span>
-                </div>
-                <div className="flex items-center gap-3">
-                  <button
-                    onClick={() => {
-                      handleAuthSuccess({
-                        name: 'Marco Rossi (Master Tailor)',
-                        contact: 'marco@ateliersoho.com',
-                        method: 'guest',
-                        role: 'STUDIO',
-                        studioId: 'atelier-soho',
-                        studioName: 'Atelier SoHo Tailors',
-                      })
-                    }}
-                    className="rounded-full bg-[#0F1115] px-5 py-2.5 text-xs font-bold text-white hover:bg-[#9E593B] transition-colors whitespace-nowrap"
-                  >
-                    Launch Demo Studio
-                  </button>
-                  <a
-                    href={customerSiteUrl}
-                    className="text-xs font-bold text-[#7A7E85] hover:text-[#0F1115] transition-colors flex items-center gap-1"
-                  >
-                    <ArrowLeft size={13} />
-                    <span>Customer Site</span>
-                  </a>
-                </div>
-              </div>
-
+          /* Profile completion for newly approved / invited partners */
+          <div className="flex-1 flex flex-col items-center justify-center px-4 py-8 relative overflow-hidden my-auto">
+            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[550px] h-[550px] bg-[#9E593B]/8 rounded-full blur-3xl pointer-events-none" />
+            <div className="relative z-10 w-full max-w-[540px] flex flex-col items-center justify-center my-auto">
+              <PartnerOnboarding
+                user={user}
+                hideHeader={true}
+                onComplete={handleAuthSuccess}
+                onSignOut={handleSignOut}
+              />
             </div>
           </div>
         )}
       </main>
 
-      {/* Studio Auth Modal */}
-      <AuthModal
-        isOpen={isAuthOpen}
-        authType={authType}
-        onClose={() => setIsAuthOpen(false)}
-        onSuccess={handleAuthSuccess}
+      <ToastContainer
+        position="top-center"
+        autoClose={3500}
+        hideProgressBar={false}
+        newestOnTop
+        closeOnClick
+        rtl={false}
+        pauseOnFocusLoss={false}
+        draggable
+        pauseOnHover
+        theme="colored"
       />
     </div>
   )

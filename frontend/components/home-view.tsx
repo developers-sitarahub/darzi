@@ -1,12 +1,11 @@
 'use client'
 
 import { CatalogSection } from './catalog-section'
-import { FitProfileSection } from './fit-profile-section'
+
 import { HeroSection } from './hero-section'
 import { HowItWorksPreview } from './how-it-works-preview'
 import { PartnerBanner } from './partner-banner'
 import { ServiceGrid } from './service-grid'
-import { StudiosPreview } from './studios-preview'
 import { TestimonialsSection } from './testimonials-section'
 import { TrustBar } from './trust-bar'
 import { type Screen, type StoreOption, type User } from './data'
@@ -35,7 +34,6 @@ export function HomeView({
   onOpenAuth,
   onQuickSearch,
   onSelectService,
-  onSelectStore,
   onRequestMeasurement,
 }: HomeViewProps) {
   return (
@@ -66,14 +64,12 @@ export function HomeView({
       {/* 5. Complete Garment Catalog & Upfront Pricing Matrix */}
       <CatalogSection go={go} onSelectService={onSelectService} />
 
-      {/* 6. Verified Local Studios & Ateliers Network */}
-      <StudiosPreview go={go} onSelectStore={onSelectStore} />
 
-      {/* 7. Digital Fit Passport Spotlight */}
-      <FitProfileSection go={go} />
 
       {/* 8. Partner Banner for Master Tailors (Rapido Captain / Uber Driver style) */}
-      <PartnerBanner go={go} />
+      {!(user && (user.role === 'CUSTOMER' || user.role !== 'STUDIO')) && (
+        <PartnerBanner go={go} />
+      )}
 
       {/* 9. Client Stories & Craftsmanship Standards */}
       <TestimonialsSection />

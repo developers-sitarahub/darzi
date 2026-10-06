@@ -1,65 +1,80 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
-import { ArrowLeft, ArrowRight, Check, Mail, Phone, Scissors, Sparkles, Store, X } from 'lucide-react'
+import { useEffect, useState, useRef } from 'react'
+import Image from 'next/image'
+import { ArrowLeft, LogOut, Mail, Phone, Store, X } from 'lucide-react'
+import { toast } from 'react-toastify'
 import type { User as UserType } from './data'
-import { loginUser, loginWithGoogle, signUpUser } from '@/lib/api'
+import { getStudioUrl, linkPhone, loginUser, loginWithGoogle, sendOtp, signUpUser, verifyOtp, checkPhoneExists } from '@/lib/api'
+import { setAuthUser, setAuthRole, setAuthToken } from '@/lib/cookies'
 
-// Customer: 'options' → 'email' | 'mobile'
-// Studio login: 'studio-options' → 'studio-login' | 'studio-register'
-// Studio signup: 'studio-signup-options' → 'studio-register'
 type AuthMode =
+  | 'role-select'
   | 'customer-options'
   | 'customer-email'
   | 'customer-mobile'
+  | 'link-phone-step'
   | 'studio-options'
   | 'studio-signup-options'
   | 'studio-login'
-  | 'studio-register'
+  | 'studio-partner-google'
 
 interface AuthModalProps {
   isOpen: boolean
   onClose: () => void
   onSuccess: (user: UserType) => void
+  onSignOut?: () => void
   targetRole?: 'CUSTOMER' | 'STUDIO'
   authType?: 'signin' | 'signup'
-}
-
-function parseJwt(token: string) {
-  try {
-    const base64Url = token.split('.')[1]
-    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/')
-    const jsonPayload = decodeURIComponent(
-      atob(base64)
-        .split('')
-        .map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
-        .join('')
-    )
-    return JSON.parse(jsonPayload)
-  } catch {
-    return null
-  }
+  currentUser?: UserType | null
+  mandatoryPhoneRequired?: boolean
 }
 
 const GOOGLE_CLIENT_ID =
   process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ||
   '927264064365-eki90ht1ko6aba8n0pnoiq6bvhql0l9m.apps.googleusercontent.com'
 
-export function AuthModal({ isOpen, onClose, onSuccess, targetRole = 'CUSTOMER', authType = 'signup' }: AuthModalProps) {
-  // Determine starting mode from role + authType
+export function AuthModal({
+  isOpen,
+  onClose,
+  onSuccess,
+  onSignOut,
+  targetRole = 'CUSTOMER',
+  authType = 'signup',
+  currentUser,
+  mandatoryPhoneRequired = false,
+}: AuthModalProps) {
+  const isMissingPhone = Boolean(mandatoryPhoneRequired || (currentUser && !currentUser.phone))
+
   const initialMode = (): AuthMode => {
+    if (isMissingPhone) return 'link-phone-step'
     if (targetRole === 'STUDIO') {
-      // Log In → studio-options (sign-in screen)
-      // Sign Up → studio-signup-options (sign-up screen, same style but different copy)
       return authType === 'signup' ? 'studio-signup-options' : 'studio-options'
     }
-    // Customer always shows the options screen
-    return 'customer-options'
+    return authType === 'signin' ? 'customer-options' : 'role-select'
   }
+
   const [mode, setMode] = useState<AuthMode>(initialMode)
   const [registerStep, setRegisterStep] = useState<1 | 2 | 3>(1)
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
+  const [notice, setNotice] = useState('')
+
+  const isSendingOtpRef = useRef(false)
+  const isSendingLinkOtpRef = useRef(false)
+  const [isSendingOtp, setIsSendingOtp] = useState(false)
+  const [resendCountdown, setResendCountdown] = useState(0)
+
+  useEffect(() => {
+    if (resendCountdown <= 0) return
+    const interval = setInterval(() => {
+      setResendCountdown((prev) => (prev > 0 ? prev - 1 : 0))
+    }, 1000)
+    return () => clearInterval(interval)
+  }, [resendCountdown])
+
+  // ── Pending User awaiting Mobile Number linking ───────────────────────────
+  const [pendingUser, setPendingUser] = useState<UserType | null>(currentUser || null)
+  const [avatarError, setAvatarError] = useState(false)
 
   // ── Customer fields ───────────────────────────────────────────────────────
   const [cName, setCName] = useState('')
@@ -69,68 +84,191 @@ export function AuthModal({ isOpen, onClose, onSuccess, targetRole = 'CUSTOMER',
   const [cOtpSent, setCOtpSent] = useState(false)
   const [cOtp, setCOtp] = useState('')
 
+  // ── Mandatory Mobile Link fields ──────────────────────────────────────────
+  const [linkPhoneVal, setLinkPhoneVal] = useState('')
+  const [linkOtpSent, setLinkOtpSent] = useState(false)
+  const [linkOtp, setLinkOtp] = useState('')
+
   // ── Studio Login fields ───────────────────────────────────────────────────
   const [sLoginEmail, setSLoginEmail] = useState('')
-  const [sLoginPass, setSLoginPass] = useState('')
 
-  // ── Studio Register: Step 1 – Location ───────────────────────────────────
-  const [sName, setSName] = useState('')
-  const [sArea, setSArea] = useState('')
-  const [sPostcode, setSPostcode] = useState('')
-  const [sAddress, setSAddress] = useState('')
-
-  // ── Studio Register: Step 2 – Contact ────────────────────────────────────
-  const [sTailorName, setSTailorName] = useState('')
-  const [sEmail, setSEmail] = useState('')
-  const [sPhone, setSPhone] = useState('')
-
-  // ── Studio Register: Step 3 – Operations ─────────────────────────────────
-  const [sMachines, setSMachines] = useState('4-6')
-  const [sCapacity, setSCapacity] = useState('25')
-  const [sSpecialties, setSSpecialties] = useState<string[]>(['Suit Tailoring', 'Dress Hemming'])
-
-  const SPECIALTIES = [
-    'Suit Tailoring',
-    'Dress Hemming',
-    'Denim Chainstitch',
-    'Silk & Gowns',
-    'Leather & Outerwear',
-    'Zip Replacements',
-  ]
-
-  // Reset on open / role / authType switch
+  // Reset on open / role / authType / currentUser switch
   useEffect(() => {
-    setMode(initialMode())
+    const missing = Boolean(mandatoryPhoneRequired || (currentUser && !currentUser.phone))
+    if (missing) {
+      setMode('link-phone-step')
+      setPendingUser(currentUser || null)
+    } else if (targetRole === 'STUDIO') {
+      setMode(authType === 'signup' ? 'studio-signup-options' : 'studio-options')
+      setPendingUser(null)
+    } else {
+      setMode(authType === 'signin' ? 'customer-options' : 'role-select')
+      setPendingUser(null)
+    }
     setRegisterStep(1)
-    setError('')
+    setNotice('')
     setLoading(false)
-  }, [isOpen, targetRole, authType])
+    setAvatarError(false)
+    setCOtpSent(false)
+    setCOtp('')
+    setLinkOtpSent(false)
+    setLinkOtp('')
+  }, [isOpen, targetRole, authType, currentUser, mandatoryPhoneRequired])
 
-  // ── Google OAuth token flow ───────────────────────────────────────────────
-  const triggerGoogle = async (role: 'CUSTOMER' | 'STUDIO') => {
+  const finalizeAuth = (user: UserType, role?: UserType['role'], token?: string, authCode?: string) => {
+    const effectiveRole = user.role || role || 'CUSTOMER'
+    const effectiveToken = token || (typeof window !== 'undefined' ? localStorage.getItem('tg_token') : null)
+
+    if (effectiveRole === 'STUDIO') {
+      if (effectiveToken) {
+        setAuthToken(effectiveToken)
+      }
+      setAuthRole('STUDIO')
+      setAuthUser(user)
+      toast.success(`Welcome back, ${user.name || 'Studio Partner'}! Redirecting to Studio Portal...`, { position: 'top-center' })
+      onClose()
+
+      const targetParam = authCode || effectiveToken
+      if (targetParam) {
+        window.location.href = getStudioUrl('/auth/callback', targetParam)
+      } else if (!user.studioName || !user.phone || user.status === 'INACTIVE') {
+        window.location.href = getStudioUrl('/?step=1')
+      } else {
+        window.location.href = getStudioUrl('/')
+      }
+      return
+    }
+
+    if (!user.phone) {
+      setPendingUser(user)
+      setMode('link-phone-step')
+      setNotice('')
+      return
+    }
+    onSuccess(user)
+  }
+
+  useEffect(() => {
+    if (typeof window !== 'undefined' && !(window as any).google?.accounts?.oauth2) {
+      const s = document.createElement('script')
+      s.src = 'https://accounts.google.com/gsi/client'
+      s.async = true
+      document.head.appendChild(s)
+    }
+  }, [])
+
+  // ── Google OAuth token flow – Studio Partner (redirects to Step 1) ─────────
+  const triggerGoogleStudio = () => {
     setLoading(true)
-    setError('')
+    setNotice('')
 
-    // Load GSI script if needed
-    const loadGsi = (): Promise<void> =>
-      new Promise((resolve) => {
-        if ((window as any).google?.accounts?.oauth2) return resolve()
+    if (typeof window === 'undefined' || !(window as any).google?.accounts?.oauth2) {
+      setLoading(false)
+      const msg = 'Google sign-in service is initializing. Please try again in a moment.'
+      toast.info(msg, { position: 'top-center' })
+      if (typeof window !== 'undefined' && !document.querySelector('script[src="https://accounts.google.com/gsi/client"]')) {
         const s = document.createElement('script')
         s.src = 'https://accounts.google.com/gsi/client'
         s.async = true
-        s.onload = () => resolve()
         document.head.appendChild(s)
-      })
+      }
+      return
+    }
 
     try {
-      await loadGsi()
       const tokenClient = (window as any).google.accounts.oauth2.initTokenClient({
         client_id: GOOGLE_CLIENT_ID,
         scope: 'email profile openid',
         callback: async (tokenResponse: any) => {
+          if (tokenResponse?.error) {
+            setLoading(false)
+            if (tokenResponse.error === 'popup_closed' || tokenResponse.error === 'access_denied') {
+              toast.warning('Google sign-in was cancelled.', { position: 'top-center' })
+            } else {
+              toast.error(`Google sign-in error: ${tokenResponse.error}`, { position: 'top-center' })
+            }
+            return
+          }
           if (!tokenResponse?.access_token) {
             setLoading(false)
-            setError('Google sign-in was cancelled.')
+            toast.warning('Google sign-in was cancelled.', { position: 'top-center' })
+            return
+          }
+          try {
+            const profileRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+              headers: { Authorization: `Bearer ${tokenResponse.access_token}` },
+            })
+            const profile = await profileRes.json()
+            const result = await loginWithGoogle({
+              accessToken: tokenResponse.access_token,
+              role: 'STUDIO',
+              profile: {
+                name: profile.name || 'Studio Partner',
+                contact: profile.email,
+                email: profile.email,
+                avatar: profile.picture,
+                method: 'google',
+                role: 'STUDIO',
+              },
+            })
+            setLoading(false)
+            if (result?.user) {
+              finalizeAuth(result.user, result.user.role || 'STUDIO', result.token, result.authCode)
+            }
+          } catch (err: any) {
+            setLoading(false)
+            const msg = err.message || 'Google sign-in failed.'
+            toast.error(msg, { position: 'top-center' })
+          }
+        },
+        error_callback: (err: any) => {
+          setLoading(false)
+          const msg = 'Google sign-in popup was blocked by your browser. Please allow popups for this site.'
+          toast.error(msg, { position: 'top-center' })
+        },
+      })
+      tokenClient.requestAccessToken()
+    } catch (err: any) {
+      setLoading(false)
+      toast.error(err.message || 'Google sign-in initialization failed.', { position: 'top-center' })
+    }
+  }
+
+  // ── Google OAuth token flow ───────────────────────────────────────────────
+  const triggerGoogle = (role: 'CUSTOMER' | 'STUDIO' = 'CUSTOMER') => {
+    setLoading(true)
+    setNotice('')
+
+    if (typeof window === 'undefined' || !(window as any).google?.accounts?.oauth2) {
+      setLoading(false)
+      const msg = 'Google sign-in service is initializing. Please try again in a moment.'
+      toast.info(msg, { position: 'top-center' })
+      if (typeof window !== 'undefined' && !document.querySelector('script[src="https://accounts.google.com/gsi/client"]')) {
+        const s = document.createElement('script')
+        s.src = 'https://accounts.google.com/gsi/client'
+        s.async = true
+        document.head.appendChild(s)
+      }
+      return
+    }
+
+    try {
+      const tokenClient = (window as any).google.accounts.oauth2.initTokenClient({
+        client_id: GOOGLE_CLIENT_ID,
+        scope: 'email profile openid',
+        callback: async (tokenResponse: any) => {
+          if (tokenResponse?.error) {
+            setLoading(false)
+            if (tokenResponse.error === 'popup_closed' || tokenResponse.error === 'access_denied') {
+              toast.warning('Google sign-in was cancelled.', { position: 'top-center' })
+            } else {
+              toast.error(`Google sign-in error: ${tokenResponse.error}`, { position: 'top-center' })
+            }
+            return
+          }
+          if (!tokenResponse?.access_token) {
+            setLoading(false)
+            toast.warning('Google sign-in was cancelled.', { position: 'top-center' })
             return
           }
           try {
@@ -144,339 +282,834 @@ export function AuthModal({ isOpen, onClose, onSuccess, targetRole = 'CUSTOMER',
               profile: {
                 name: profile.name || 'Google User',
                 contact: profile.email,
+                email: profile.email,
                 avatar: profile.picture,
                 method: 'google',
                 role,
-                ...(role === 'STUDIO' && {
-                  studioId: 'atelier-soho',
-                  studioName: sName || 'Atelier SoHo Tailors',
-                }),
               },
             })
             setLoading(false)
             if (result?.user) {
-              // ── Role mismatch guard ───────────────────────────────────────
-              // If this Google account was registered with a different role,
-              // block the sign-in and show a clear error.
-              const returnedRole = result.user.role
-              if (returnedRole && returnedRole !== role) {
-                setError(
-                  returnedRole === 'STUDIO'
-                    ? 'This Google account is registered as a Studio partner. Please sign in via the Studio portal, or use a different Google account.'
-                    : 'This Google account is registered as a Customer. Please use a different Google account to set up your Studio.'
-                )
-                return
-              }
-              // ─────────────────────────────────────────────────────────────
-
-              if (role === 'STUDIO' && !result.user.studioName) {
-                // Google gave us the account — still need studio details
-                setMode('studio-register')
-                setSTailorName(result.user.name || '')
-                setSEmail(result.user.email || result.user.contact || '')
-              } else {
-                onSuccess(result.user)
-              }
+              finalizeAuth(result.user, result.user.role || role, result.token, result.authCode)
             }
           } catch (err: any) {
             setLoading(false)
-            setError(err.message || 'Google sign-in failed.')
+            const msg = err.message || 'Google sign-in failed.'
+            toast.error(msg, { position: 'top-center' })
           }
+        },
+        error_callback: (err: any) => {
+          setLoading(false)
+          const msg = 'Google sign-in popup was blocked by your browser. Please allow popups for this site.'
+          toast.error(msg, { position: 'top-center' })
         },
       })
       tokenClient.requestAccessToken()
     } catch (err: any) {
-      // Fallback demo user
       setLoading(false)
-      const demo: UserType = {
-        name: role === 'STUDIO' ? 'Marco Rossi (Demo)' : 'Google Member',
-        contact: role === 'STUDIO' ? 'marco@ateliersoho.com' : 'demo@gmail.com',
-        method: 'google',
-        role,
-        ...(role === 'STUDIO' && { studioId: 'atelier-soho', studioName: 'Atelier SoHo Tailors' }),
-      }
-      onSuccess(demo)
+      toast.error(err.message || 'Google sign-in initialization failed.', { position: 'top-center' })
     }
   }
 
-  // ── Customer email submit ─────────────────────────────────────────────────
+  // ── Customer Mobile (SMS OTP) Flow ────────────────────────────────────────
+  const handleSendMobileOtp = async (e?: React.FormEvent, force: boolean = false) => {
+    if (e) e.preventDefault()
+    if (isSendingOtpRef.current) return
+    const cleanedDigits = cPhone.replace(/\D/g, '')
+    if (cleanedDigits.length < 10) {
+      const msg = 'Please enter a valid 10-digit mobile number.'
+      toast.warning(msg, { position: 'top-center' })
+      return
+    }
+    isSendingOtpRef.current = true
+    setIsSendingOtp(true)
+    setNotice('')
+    try {
+      // 1. Check whether any user with that mobile number exists or not
+      const checkRes = await checkPhoneExists(cPhone.trim())
+
+      if (!checkRes.exists) {
+        setIsSendingOtp(false)
+        isSendingOtpRef.current = false
+        toast.error('No account found with this mobile number. Please register yourself.', { position: 'top-center' })
+        return
+      }
+
+      // 2. User exists: send OTP
+      const res = await sendOtp(cPhone.trim(), force)
+      setIsSendingOtp(false)
+      setCOtpSent(true)
+      setResendCountdown(30)
+      if (res.phone) setCPhone(res.phone)
+      if (res.cooldown) {
+        toast.info(res.message, { position: 'top-center' })
+      } else {
+        toast.success(res.message || `Verification code sent via SMS to ${res.phone || cPhone.trim()}`, { position: 'top-center' })
+      }
+    } catch (err: any) {
+      setIsSendingOtp(false)
+      const msg = err.message || 'Failed to send verification code.'
+      toast.error(msg, { position: 'top-center' })
+    } finally {
+      isSendingOtpRef.current = false
+    }
+  }
+
+  const handleVerifyMobileOtp = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!cOtpSent) {
+      toast.warning('Please click Send OTP first to receive your code.', { position: 'top-center' })
+      return
+    }
+    if (!cOtp || cOtp.length < 4) {
+      const msg = 'Please enter the 4-digit verification code.'
+      toast.warning(msg, { position: 'top-center' })
+      return
+    }
+    setLoading(true)
+    try {
+      const res = await verifyOtp({
+        phone: cPhone.trim(),
+        otp: cOtp.trim(),
+      })
+      setLoading(false)
+      if (res?.user) {
+        finalizeAuth(res.user, res.user.role, res.token, res.authCode)
+      }
+    } catch (err: any) {
+      setLoading(false)
+      const msg = err.message || 'Invalid code.'
+      toast.error(msg, { position: 'top-center' })
+    }
+  }
+
+  // ── Customer Email Sign-in Flow (with mandatory Mobile) ────────────────────
   const handleCustomerEmail = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (!cEmail || !cEmail.includes('@')) {
+      const msg = 'Please enter a valid email address.'
+      toast.warning(msg, { position: 'top-center' })
+      return
+    }
+    if (!cPhone || cPhone.trim().length < 6) {
+      const msg = 'Mobile number is required for fitting passes.'
+      toast.warning(msg, { position: 'top-center' })
+      return
+    }
     setLoading(true)
-    setError('')
     try {
       const result = await signUpUser({
         name: cName || 'Darzi Member',
-        email: cEmail,
-        postcode: cPostcode,
+        email: cEmail.trim(),
+        phone: cPhone.trim(),
+        postcode: cPostcode.trim(),
         role: 'CUSTOMER',
       })
       setLoading(false)
-      if (result?.user) onSuccess(result.user)
-    } catch (err: any) {
-      setLoading(false)
-      setError(err.message || 'Sign in failed.')
-    }
-  }
-
-  // ── Customer mobile (OTP) ─────────────────────────────────────────────────
-  const handleSendOtp = (e: React.FormEvent) => {
-    e.preventDefault()
-    if (cPhone.trim().length < 6) { setError('Enter a valid phone number.'); return }
-    setCOtpSent(true)
-    setError('')
-  }
-
-  const handleVerifyOtp = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setLoading(true)
-    setError('')
-    try {
-      const result = await signUpUser({ name: cName || 'Mobile Member', phone: cPhone, role: 'CUSTOMER' })
-      setLoading(false)
-      if (result?.user) onSuccess(result.user)
-    } catch (err: any) {
-      setLoading(false)
-      setError(err.message || 'Verification failed.')
-    }
-  }
-
-  // ── Studio login ──────────────────────────────────────────────────────────
-  const handleStudioLogin = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setLoading(true)
-    setError('')
-    try {
-      const result = await loginUser({ email: sLoginEmail, role: 'STUDIO' })
-      setLoading(false)
-      if (result?.user) onSuccess(result.user)
-    } catch (err: any) {
-      setLoading(false)
-      // Demo fallback so UI is testable without live backend
-      const demo: UserType = {
-        name: sTailorName || 'Marco Rossi (Master Tailor)',
-        contact: sLoginEmail,
-        method: 'email',
-        role: 'STUDIO',
-        studioId: 'atelier-soho',
-        studioName: 'Atelier SoHo Tailors',
+      if (result?.user) {
+        finalizeAuth(result.user, result.user.role || 'CUSTOMER', result.token, result.authCode)
       }
-      onSuccess(demo)
+    } catch (err: any) {
+      setLoading(false)
+      const msg = err.message || 'Sign up failed.'
+      toast.error(msg, { position: 'top-center' })
     }
   }
 
-  // ── Studio registration final submit ─────────────────────────────────────
-  const handleStudioRegister = async (e: React.FormEvent) => {
-    e.preventDefault()
+  // ── Mandatory Mobile Link Step ────────────────────────────────────────────
+  const handleSendLinkOtp = async (e?: React.FormEvent, force: boolean = false) => {
+    if (e) e.preventDefault()
+    if (isSendingLinkOtpRef.current) return
+    const cleanedDigits = linkPhoneVal.replace(/\D/g, '')
+    if (cleanedDigits.length < 10) {
+      const msg = 'Please enter a valid 10-digit mobile number with country code (e.g. +91 98765 43210).'
+      toast.warning(msg, { position: 'top-center' })
+      return
+    }
+    isSendingLinkOtpRef.current = true
     setLoading(true)
-    setError('')
     try {
-      const result = await signUpUser({
-        name: sTailorName,
-        email: sEmail,
-        phone: sPhone,
-        address: sAddress,
-        postcode: sPostcode,
-        role: 'STUDIO',
-        storeName: sName,
-        storeArea: sArea,
-        machines: sMachines,
+      const res = await sendOtp(linkPhoneVal.trim(), force)
+      setLoading(false)
+      setLinkOtpSent(true)
+      if (res.phone) setLinkPhoneVal(res.phone)
+      if (res.cooldown) {
+        toast.info(res.message, { position: 'top-center' })
+      } else {
+        toast.success(res.message || `Verification code sent via SMS to ${res.phone || linkPhoneVal.trim()}`, { position: 'top-center' })
+      }
+    } catch (err: any) {
+      setLoading(false)
+      const msg = err.message || 'Failed to send verification code.'
+      toast.error(msg, { position: 'top-center' })
+    } finally {
+      isSendingLinkOtpRef.current = false
+    }
+  }
+
+  const handleVerifyLinkPhone = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!linkOtp || linkOtp.length < 4) {
+      const msg = 'Please enter the 4-digit code.'
+      toast.warning(msg, { position: 'top-center' })
+      return
+    }
+    setLoading(true)
+    try {
+      const res = await linkPhone({
+        phone: linkPhoneVal.trim(),
+        otp: linkOtp.trim(),
+        userId: pendingUser?.id || currentUser?.id,
       })
       setLoading(false)
-      if (result?.user) onSuccess(result.user)
+      if (res?.user) {
+        toast.success('Mobile number linked successfully!', { position: 'top-center' })
+        finalizeAuth(res.user, res.user.role, res.token, res.authCode)
+      }
     } catch (err: any) {
       setLoading(false)
-      // Demo fallback
-      const demo: UserType = {
-        name: sTailorName || 'Master Tailor',
-        contact: sEmail,
-        method: 'email',
-        role: 'STUDIO',
-        studioId: 'new-studio',
-        studioName: sName || 'New Atelier Studio',
-      }
-      onSuccess(demo)
+      const msg = err.message || 'Failed to verify code.'
+      toast.error(msg, { position: 'top-center' })
     }
   }
 
-  const toggleSpecialty = (s: string) =>
-    setSSpecialties((prev) => (prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s]))
+  // ── Studio Login ──────────────────────────────────────────────────────────
+  const handleStudioLogin = async (e: React.FormEvent) => {
+    e.preventDefault()
+    const cleanId = sLoginEmail.trim()
+    if (!cleanId) {
+      const msg = 'Please enter your registered email or mobile number.'
+      toast.warning(msg, { position: 'top-center' })
+      return
+    }
+    if (cleanId.includes('@')) {
+      const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/
+      if (!emailRegex.test(cleanId)) {
+        const msg = 'Please enter a valid email address (e.g. atelier@domain.com).'
+        toast.warning(msg, { position: 'top-center' })
+        return
+      }
+    } else {
+      const digits = cleanId.replace(/\D/g, '')
+      if (digits.length < 8) {
+        const msg = 'Please enter a valid mobile number with country code.'
+        toast.warning(msg, { position: 'top-center' })
+        return
+      }
+    }
+
+    setLoading(true)
+    try {
+      const result = await loginUser({ identifier: cleanId })
+      setLoading(false)
+      if (result?.user) finalizeAuth(result.user, result.user.role, result.token, result.authCode)
+    } catch (err: any) {
+      setLoading(false)
+      const msg = err.message || 'Login failed.'
+      toast.error(msg, { position: 'top-center' })
+    }
+  }
 
   const goBack = () => {
-    if (mode === 'studio-register' && registerStep > 1) {
-      setRegisterStep((p) => (p - 1) as 1 | 2 | 3)
-    } else if (mode === 'studio-register') {
-      // from register form, go back to sign-up options
-      setMode('studio-signup-options')
-      setRegisterStep(1)
-    } else if (mode === 'studio-login') {
+    if (mode === 'studio-login') {
       setMode('studio-options')
+    } else if (mode === 'customer-mobile' || mode === 'customer-email') {
+      setMode('customer-options')
+      setRegisterStep(1)
+    } else if (mode === 'link-phone-step') {
+      setMode(authType === 'signin' ? 'customer-options' : 'role-select')
+      setPendingUser(null)
+    } else if (mode === 'customer-options' || mode === 'studio-partner-google' || mode === 'studio-options' || mode === 'studio-signup-options') {
+      setMode('role-select')
+      setRegisterStep(1)
     } else {
-      setMode(targetRole === 'STUDIO' ? 'studio-options' : 'customer-options')
+      setMode(authType === 'signin' ? 'customer-options' : 'role-select')
       setRegisterStep(1)
     }
-    setError('')
+    setNotice('')
   }
 
   if (!isOpen) return null
 
-  // Show back button on all sub-screens except the two root options pages
-  const isSubPage = mode !== 'customer-options' && mode !== 'studio-options' && mode !== 'studio-signup-options'
+  const isSubPage =
+    mode !== 'role-select' &&
+    !(authType === 'signin' && mode === 'customer-options') &&
+    !(targetRole === 'STUDIO' && authType === 'signin' && mode === 'studio-options') &&
+    !(targetRole === 'STUDIO' && authType === 'signup' && mode === 'studio-signup-options')
+
+  const activeUser = pendingUser || currentUser
+  const userInitial = (activeUser?.name || 'U')[0].toUpperCase()
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-      <div className="relative w-full max-w-[420px] rounded-2xl bg-white shadow-2xl border border-[#E5E7EB] max-h-[94vh] overflow-y-auto">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) {
+          onClose()
+        }
+      }}
+    >
+      <div className="relative w-full max-w-[420px] rounded-3xl bg-white shadow-2xl border border-[#E8E1D5] overflow-hidden transition-all duration-200">
 
-        {/* Header bar */}
-        <div className="flex items-center justify-between px-6 pt-5 pb-4 border-b border-[#F3F4F6]">
-          <div className="flex items-center gap-2.5">
-            {isSubPage ? (
-              <button onClick={goBack} className="size-7 rounded-lg bg-[#F3F4F6] hover:bg-[#E5E7EB] grid place-items-center transition-colors">
-                <ArrowLeft size={14} className="text-[#374151]" />
-              </button>
-            ) : (
-              <div className="flex items-center gap-2">
-                <img src="/bg_logo.png" alt="Darzi" className="h-8 w-auto object-contain" />
-                <div className="flex flex-col justify-center border-l border-[#E5DFD5] pl-2">
-                  <span className="text-[9px] font-extrabold tracking-widest uppercase text-[#9E593B] block leading-none">
-                    On-Demand
-                  </span>
-                  <span className="text-[8px] font-bold tracking-wider uppercase text-[#6B7280] block mt-0.5 leading-none">
-                    Alterations
-                  </span>
-                </div>
-              </div>
-            )}
-          </div>
-          <button onClick={onClose} className="size-7 rounded-full bg-[#F3F4F6] hover:bg-[#E5E7EB] grid place-items-center transition-colors">
-            <X size={14} className="text-[#374151]" />
+        {/* Top Controls: Back button & Top-Right Close Button */}
+        {isSubPage && (
+          <button
+            onClick={goBack}
+            className="absolute top-4 left-4 z-20 size-8 rounded-full bg-[#FAF8F5] hover:bg-[#F3EFEA] border border-[#E8E1D5] grid place-items-center text-[#18191B] transition-colors cursor-pointer"
+            aria-label="Back"
+          >
+            <ArrowLeft size={14} />
           </button>
+        )}
+
+        <button
+          onClick={onClose}
+          className="absolute top-4 right-4 z-20 size-8 rounded-full bg-[#FAF8F5] hover:bg-[#F3EFEA] border border-[#E8E1D5] grid place-items-center text-[#7A7E85] hover:text-[#18191B] transition-colors"
+          aria-label="Close"
+        >
+          <X size={14} />
+        </button>
+
+        {/* Header Logo */}
+        <div className="flex items-center justify-center px-6 pt-7 pb-3">
+          <img
+            src="/bg_logo.png"
+            alt="Darzi Logo"
+            className="h-16 sm:h-20 max-h-24 w-auto object-contain transition-all duration-200"
+          />
         </div>
 
-        <div className="px-6 py-5 space-y-5">
-          {error && (
-            <div className="rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-xs text-red-700 font-medium">
-              {error}
-            </div>
-          )}
-
+        <div className="px-6 pb-6 pt-1 space-y-5">
           {/* ================================================================ */}
-          {/* CUSTOMER – Sign Up / Sign In Options                             */}
+          {/* ROLE SELECTION – Customer vs Studio Partner                      */}
           {/* ================================================================ */}
-          {mode === 'customer-options' && (
-            <div className="space-y-5">
-              <div>
-                <p className="text-[11px] font-extrabold uppercase tracking-[0.16em] text-[#9E593B]">Customer Sign In</p>
-                <h2 className="font-serif text-[26px] font-bold text-[#0F1115] mt-0.5 leading-tight">Sign up with Google</h2>
-                <p className="text-[13px] text-[#6B7280] mt-1.5">Connect your Google account to fetch your name and email automatically.</p>
-              </div>
-
-              <div className="space-y-2.5">
-                <GoogleButton label="Continue with Google" loading={loading} onClick={() => triggerGoogle('CUSTOMER')} bordered />
-                <AuthButton icon={<Mail size={15} className="text-[#9E593B]" />} label="Continue with Email" onClick={() => setMode('customer-email')} />
-                <AuthButton icon={<Phone size={15} className="text-[#9E593B]" />} label="Continue with Mobile" onClick={() => setMode('customer-mobile')} />
-              </div>
-
-              <Divider />
+          {mode === 'role-select' && (
+            <div className="space-y-4">
               <div className="text-center">
-                <button onClick={() => { onSuccess({ name: 'Guest', contact: 'guest@Darzi.com', method: 'guest', role: 'CUSTOMER' }) }} className="text-[12px] text-[#9CA3AF] hover:text-[#374151] underline underline-offset-4 transition-colors">
-                  Continue as guest
+                <h2 className="font-serif text-[22px] font-bold text-[#18191B] tracking-tight leading-tight">
+                  How are you joining?
+                </h2>
+                <p className="text-xs text-[#7A7E85] mt-1">
+                  Choose your role to get started with Darzi.
+                </p>
+              </div>
+
+              {/* Cards Row */}
+              <div className="grid grid-cols-2 gap-3 pt-1">
+                {/* Customer Card */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setNotice('')
+                    setMode('customer-options')
+                  }}
+                  className="group relative flex flex-col items-center gap-3 rounded-2xl border-2 border-[#E8E1D5] bg-[#FAF8F5] hover:border-[#9E593B] hover:bg-white p-4 transition-all duration-200 hover:shadow-lg hover:-translate-y-0.5 text-left"
+                >
+                  {/* Customer Illustration */}
+                  <div className="w-full h-[148px] rounded-2xl overflow-hidden bg-[#FAF6F0] flex items-center justify-center relative border border-[#E8E1D5]/60 shadow-inner">
+                    <img
+                      src="/role-customer.jpg"
+                      alt="Customer"
+                      className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-300"
+                    />
+                  </div>
+                  <div className="w-full">
+                    <p className="text-[14px] font-bold text-[#18191B] group-hover:text-[#9E593B] transition-colors">
+                      I'm a Customer
+                    </p>
+                    <p className="text-[11px] text-[#7A7E85] mt-0.5 leading-snug">
+                      Book alterations & fittings
+                    </p>
+                  </div>
+                  <div className="absolute top-3 right-3 size-5 rounded-full border-2 border-[#E8E1D5] group-hover:border-[#9E593B] group-hover:bg-[#9E593B] transition-all flex items-center justify-center">
+                    <svg className="size-2.5 text-white opacity-0 group-hover:opacity-100 transition-opacity" fill="none" viewBox="0 0 10 8">
+                      <path d="M1 4l2.5 2.5L9 1" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  </div>
+                </button>
+
+                {/* Studio Partner Card */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setNotice('')
+                    setMode('studio-options')
+                  }}
+                  className="group relative flex flex-col items-center gap-3 rounded-2xl border-2 border-[#E8E1D5] bg-[#FAF8F5] hover:border-[#0F1115] hover:bg-white p-4 transition-all duration-200 hover:shadow-lg hover:-translate-y-0.5 text-left"
+                >
+                  {/* Studio Illustration */}
+                  <div className="w-full h-[148px] rounded-2xl overflow-hidden bg-[#FAF6F0] flex items-center justify-center relative border border-[#E8E1D5]/60 shadow-inner">
+                    <img
+                      src="/role-studio.jpg"
+                      alt="Studio Partner"
+                      className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-300"
+                    />
+                  </div>
+                  <div className="w-full">
+                    <p className="text-[14px] font-bold text-[#18191B] group-hover:text-[#0F1115] transition-colors">
+                      Studio Partner
+                    </p>
+                    <p className="text-[11px] text-[#7A7E85] mt-0.5 leading-snug">
+                      List your atelier & earn
+                    </p>
+                  </div>
+                  <div className="absolute top-3 right-3 size-5 rounded-full border-2 border-[#E8E1D5] group-hover:border-[#0F1115] group-hover:bg-[#0F1115] transition-all flex items-center justify-center">
+                    <svg className="size-2.5 text-white opacity-0 group-hover:opacity-100 transition-opacity" fill="none" viewBox="0 0 10 8">
+                      <path d="M1 4l2.5 2.5L9 1" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  </div>
                 </button>
               </div>
+
+              {/* OR Divider & Already signed up option */}
+              <div className="pt-2 space-y-2.5">
+                <Divider />
+                <div className="text-center">
+                  <span className="text-xs text-[#7A7E85]">Already have an account? </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setNotice('')
+                      setMode('customer-options')
+                    }}
+                    className="text-xs font-bold text-[#9E593B] hover:text-[#7A4027] hover:underline cursor-pointer ml-1"
+                  >
+                    Log In →
+                  </button>
+                </div>
+              </div>
+
+              <p className="text-center text-[10px] text-[#9CA3AF]">
+                By continuing you agree to our Terms &amp; Privacy Policy.
+              </p>
             </div>
           )}
 
           {/* ================================================================ */}
-          {/* CUSTOMER – Email Form                                            */}
+          {/* STUDIO PARTNER – Google Sign-In / Sign-Up then redirect step 1   */}
           {/* ================================================================ */}
-          {mode === 'customer-email' && (
-            <form onSubmit={handleCustomerEmail} className="space-y-4">
+          {mode === 'studio-partner-google' && (
+            <div className="space-y-4">
               <div>
-                <p className="text-[11px] font-extrabold uppercase tracking-[0.16em] text-[#9E593B]">Email Sign In</p>
-                <h2 className="font-serif text-2xl font-bold text-[#0F1115] mt-0.5">Continue with Email</h2>
+                <h2 className="font-serif text-[24px] font-bold text-[#18191B] tracking-tight leading-tight">
+                  Welcome to Darzi Studio
+                </h2>
+                <p className="text-xs text-[#7A7E85] mt-1">
+                  Sign in or register your atelier with Google to get started.
+                </p>
               </div>
 
-              <Field label="Your name" value={cName} onChange={setCName} placeholder="Sarah Jenkins" />
-              <Field label="Email address" type="email" required value={cEmail} onChange={setCEmail} placeholder="name@example.com" />
-              <Field label="Postcode (optional)" value={cPostcode} onChange={setCPostcode} placeholder="W8 4EP" />
+              <div className="space-y-2.5 pt-1">
+                <GoogleButton
+                  label="Continue with Google"
+                  loading={loading}
+                  onClick={() => triggerGoogleStudio()}
+                  bordered
+                />
 
-              <SubmitBtn loading={loading} label="Continue" />
-            </form>
+                <p className="text-center text-[10px] text-[#9CA3AF] pt-1">
+                  Already registered?{' '}
+                  <button
+                    type="button"
+                    onClick={() => setMode('studio-options')}
+                    className="text-[#9E593B] font-semibold hover:underline"
+                  >
+                    Sign in instead
+                  </button>
+                </p>
+              </div>
+
+              <p className="text-center text-[10px] text-[#9CA3AF]">
+                By continuing you agree to our Terms &amp; Privacy Policy.
+              </p>
+            </div>
           )}
 
           {/* ================================================================ */}
-          {/* CUSTOMER – Mobile / OTP                                         */}
+          {/* MINIMALIST MANDATORY MOBILE LINK STEP                            */}
+          {/* ================================================================ */}
+          {mode === 'link-phone-step' && (
+            <div className="space-y-4">
+              {!linkOtpSent ? (
+                <>
+                  <div>
+                    <h2 className="font-serif text-[23px] font-bold text-[#18191B] tracking-tight leading-tight">
+                      Link your mobile number
+                    </h2>
+                    <p className="text-xs text-[#7A7E85] mt-1 leading-relaxed">
+                      Required for studio admission passes and live alteration status.
+                    </p>
+                  </div>
+
+                  {/* Minimal Account Pill */}
+                  {activeUser && (
+                    <div className="flex items-center justify-between p-2.5 rounded-2xl bg-[#FAF8F5] border border-[#E8E1D5]">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className="size-8 rounded-full overflow-hidden shrink-0 bg-[#18191B] text-white text-xs font-bold grid place-items-center border border-[#E8E1D5] relative">
+                          {activeUser.avatar && !avatarError ? (
+                            <Image
+                              src={activeUser.avatar}
+                              alt={activeUser.name || 'User avatar'}
+                              width={32}
+                              height={32}
+                              referrerPolicy="no-referrer"
+                              crossOrigin="anonymous"
+                              className="size-full object-cover"
+                              onError={() => setAvatarError(true)}
+                            />
+                          ) : (
+                            <span>{userInitial}</span>
+                          )}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-xs font-bold text-[#18191B] truncate">{activeUser.name}</p>
+                          <p className="text-[11px] text-[#7A7E85] truncate">{activeUser.email || activeUser.contact}</p>
+                        </div>
+                      </div>
+                      <span className="text-[10px] font-semibold text-[#065F46] bg-[#ECFDF5] px-2 py-0.5 rounded-full border border-emerald-200/50">
+                        Connected
+                      </span>
+                    </div>
+                  )}
+
+                  <form onSubmit={handleSendLinkOtp} className="space-y-3.5 pt-1">
+                    <div>
+                      <label className="block text-[11px] font-bold uppercase tracking-wider text-[#5A5D64] mb-1.5">
+                        Mobile Number
+                      </label>
+                      <input
+                        type="tel"
+                        inputMode="tel"
+                        required
+                        autoFocus
+                        value={linkPhoneVal}
+                        onChange={(e) => setLinkPhoneVal(e.target.value.replace(/[^\d+ ]/g, ''))}
+                        placeholder="+91 98765 43210"
+                        className="w-full rounded-xl border border-[#DDD6CB] bg-white px-3.5 py-2.5 text-[13px] text-[#18191B] placeholder:text-[#9CA3AF] focus:border-[#9E593B] focus:outline-none transition-colors"
+                      />
+                    </div>
+                    <button
+                      type="submit"
+                      disabled={loading}
+                      className="w-full rounded-xl bg-[#0F1115] hover:bg-[#9E593B] py-3 text-[13px] font-bold text-white transition-all active:scale-[0.99] disabled:opacity-60 shadow-sm"
+                    >
+                      {loading ? 'Sending code…' : 'Send Verification Code'}
+                    </button>
+                  </form>
+                </>
+              ) : (
+                <>
+                  <div>
+                    <h2 className="font-serif text-[23px] font-bold text-[#18191B] tracking-tight leading-tight">
+                      Enter your code
+                    </h2>
+                    <div className="flex items-center gap-1.5 mt-1 text-xs text-[#7A7E85]">
+                      <span>Sent to <strong className="text-[#18191B] font-semibold">{linkPhoneVal}</strong></span>
+                      <span>•</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setLinkOtpSent(false)
+                          setLinkOtp('')
+                          setNotice('')
+                        }}
+                        className="text-[#9E593B] font-semibold hover:underline"
+                      >
+                        Change
+                      </button>
+                    </div>
+                  </div>
+
+                  <form onSubmit={handleVerifyLinkPhone} className="space-y-3.5 pt-1">
+                    <div>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                        maxLength={4}
+                        required
+                        autoFocus
+                        value={linkOtp}
+                        onChange={(e) => setLinkOtp(e.target.value.replace(/\D/g, ''))}
+                        placeholder="• • • •"
+                        className="w-full text-center text-2xl font-mono font-bold tracking-[0.4em] rounded-xl border border-[#DDD6CB] bg-white py-3 focus:border-[#9E593B] focus:outline-none placeholder:text-gray-300 placeholder:tracking-[0.3em]"
+                      />
+                    </div>
+                    <button
+                      type="submit"
+                      disabled={loading}
+                      className="w-full rounded-xl bg-[#0F1115] hover:bg-[#9E593B] py-3 text-[13px] font-bold text-white transition-all active:scale-[0.99] disabled:opacity-60 shadow-sm"
+                    >
+                      {loading ? 'Verifying…' : 'Verify & Continue'}
+                    </button>
+                    <div className="text-center pt-1">
+                      <button
+                        type="button"
+                        disabled={loading || resendCountdown > 0}
+                        onClick={() => handleSendLinkOtp(undefined, true)}
+                        className="text-xs text-[#9E593B] font-semibold hover:underline disabled:opacity-50"
+                      >
+                        {resendCountdown > 0 ? `Resend (${resendCountdown}s)` : 'Resend code'}
+                      </button>
+                    </div>
+                  </form>
+                </>
+              )}
+
+              {onSignOut && (
+                <div className="pt-2 text-center">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onSignOut()
+                      setMode('customer-options')
+                      setPendingUser(null)
+                    }}
+                    className="inline-flex items-center gap-1.5 text-xs text-[#7A7E85] hover:text-red-600 transition-colors"
+                  >
+                    <LogOut size={12} />
+                    <span>Sign out or use different account</span>
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ================================================================ */}
+          {/* CUSTOMER – Sign In Options (Google, Mobile, Email)               */}
+          {/* ================================================================ */}
+          {mode === 'customer-options' && (
+            <div className="space-y-4">
+              <div>
+                <h2 className="font-serif text-[24px] font-bold text-[#18191B] tracking-tight leading-tight">
+                  Login to Darzi
+                </h2>
+                <p className="text-xs text-[#7A7E85] mt-1">
+                  Access your bespoke fitting passes, saved sizes, and orders.
+                </p>
+              </div>
+
+              <div className="space-y-2.5 pt-1">
+                <GoogleButton label="Login with Google" loading={loading} onClick={() => triggerGoogle('CUSTOMER')} bordered />
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setNotice('')
+                    setMode('customer-mobile')
+                  }}
+                  className="w-full flex items-center justify-center gap-2.5 rounded-xl bg-[#FAF8F5] hover:bg-[#F3EFEA] border border-[#E8E1D5] py-2.5 text-[13px] font-semibold text-[#18191B] transition-colors cursor-pointer active:scale-[0.99]"
+                >
+                  <Phone size={14} className="text-[#9E593B]" />
+                  <span>Login with Mobile Number</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setNotice('')
+                    setMode('customer-email')
+                  }}
+                  className="w-full flex items-center justify-center gap-2.5 rounded-xl bg-[#FAF8F5] hover:bg-[#F3EFEA] border border-[#E8E1D5] py-2.5 text-[13px] font-semibold text-[#18191B] transition-colors cursor-pointer active:scale-[0.99]"
+                >
+                  <Mail size={14} className="text-[#9E593B]" />
+                  <span>Login with Email</span>
+                </button>
+              </div>
+
+              {/* OR Divider & Don't have an account option */}
+              <div className="pt-2 space-y-2.5">
+                <Divider />
+                <div className="text-center">
+                  <span className="text-xs text-[#7A7E85]">Don't have an account? </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setNotice('')
+                      setMode('role-select')
+                    }}
+                    className="text-xs font-bold text-[#9E593B] hover:text-[#7A4027] hover:underline cursor-pointer ml-1"
+                  >
+                    Sign Up →
+                  </button>
+                </div>
+              </div>
+
+              <p className="text-center text-[10px] text-[#9CA3AF] pt-1">
+                By continuing you agree to our Terms &amp; Privacy Policy.
+              </p>
+            </div>
+          )}
+
+          {/* ================================================================ */}
+          {/* CUSTOMER – Mobile Number / SMS OTP                               */}
           {/* ================================================================ */}
           {mode === 'customer-mobile' && (
             <div className="space-y-4">
               <div>
-                <p className="text-[11px] font-extrabold uppercase tracking-[0.16em] text-[#9E593B]">SMS Sign In</p>
-                <h2 className="font-serif text-2xl font-bold text-[#0F1115] mt-0.5">
-                  {cOtpSent ? 'Enter Verification Code' : 'Enter Mobile Number'}
+                <h2 className="font-serif text-[22px] font-bold text-[#18191B]">
+                  Login with Mobile
                 </h2>
+                <p className="text-xs text-[#7A7E85] mt-0.5">
+                  Enter your registered mobile number to receive an OTP.
+                </p>
               </div>
 
-              {!cOtpSent ? (
-                <form onSubmit={handleSendOtp} className="space-y-3">
-                  <Field label="Your name" value={cName} onChange={setCName} placeholder="Sarah Jenkins" />
-                  <Field label="Phone number" type="tel" required value={cPhone} onChange={setCPhone} placeholder="+44 7700 900077" />
-                  <SubmitBtn loading={false} label="Send Code" />
-                </form>
-              ) : (
-                <form onSubmit={handleVerifyOtp} className="space-y-3">
-                  <p className="text-xs text-[#6B7280]">Code sent to {cPhone}. Enter any 4 digits to continue.</p>
+              <form onSubmit={handleVerifyMobileOtp} className="space-y-4 pt-1">
+                {/* Mobile Phone Number Input Area */}
+                <div>
+                  <label className="block text-[11px] font-bold uppercase tracking-wider text-[#5A5D64] mb-1">
+                    Mobile Phone Number *
+                  </label>
+                  <input
+                    type="tel"
+                    required
+                    value={cPhone}
+                    onChange={(e) => setCPhone(e.target.value.replace(/[^\d+ ]/g, ''))}
+                    placeholder="+91 98765 43210"
+                    className="w-full rounded-xl border border-[#DDD6CB] bg-white px-3.5 py-2 text-[13px] text-[#18191B] placeholder:text-[#9CA3AF] focus:border-[#9E593B] focus:outline-none transition-colors"
+                  />
+                  {/* Lower right side Send OTP button / countdown in smaller font */}
+                  <div className="flex justify-end mt-1.5">
+                    <button
+                      type="button"
+                      disabled={isSendingOtp || resendCountdown > 0 || !cPhone.trim()}
+                      onClick={() => handleSendMobileOtp(undefined, cOtpSent)}
+                      className="text-[11px] font-semibold text-[#9E593B] hover:text-[#7A4027] hover:underline disabled:opacity-50 disabled:no-underline disabled:cursor-not-allowed cursor-pointer transition-colors"
+                    >
+                      {isSendingOtp
+                        ? 'Sending OTP...'
+                        : resendCountdown > 0
+                          ? `Resend OTP in ${resendCountdown}s`
+                          : cOtpSent
+                            ? 'Resend OTP'
+                            : 'Send OTP'}
+                    </button>
+                  </div>
+                </div>
+
+                {/* OTP Input Area */}
+                <div>
+                  <label className="block text-[11px] font-bold uppercase tracking-wider text-[#5A5D64] mb-1">
+                    Enter OTP *
+                  </label>
                   <input
                     type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
                     maxLength={4}
                     required
                     value={cOtp}
-                    onChange={(e) => setCOtp(e.target.value)}
-                    placeholder="4829"
-                    className="w-full text-center text-2xl font-mono font-bold tracking-[0.4em] rounded-xl border border-[#D1D5DB] py-3 focus:border-[#9E593B] focus:outline-none"
+                    onChange={(e) => setCOtp(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                    placeholder="• • • •"
+                    className="w-full text-center text-2xl font-mono font-bold tracking-[0.4em] rounded-xl border border-[#DDD6CB] bg-white py-2.5 focus:border-[#9E593B] focus:outline-none placeholder:text-gray-300 placeholder:tracking-[0.3em] transition-colors"
                   />
-                  <SubmitBtn loading={loading} label="Verify & Continue" />
-                </form>
-              )}
+                </div>
+
+                {/* Verify OTP Button */}
+                <SubmitBtn
+                  loading={loading}
+                  label="Verify OTP"
+                  disabled={!cPhone.trim() || cOtp.length < 4}
+                />
+
+                <div className="text-center pt-1 border-t border-[#F3EFEA]">
+                  <span className="text-xs text-[#7A7E85]">Don't have an account? </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setNotice('')
+                      setMode('customer-email')
+                    }}
+                    className="text-xs font-bold text-[#9E593B] hover:text-[#7A4027] hover:underline cursor-pointer ml-1"
+                  >
+                    Register yourself
+                  </button>
+                </div>
+              </form>
             </div>
+          )}
+
+          {/* ================================================================ */}
+          {/* CUSTOMER – Email / Registration Form                             */}
+          {/* ================================================================ */}
+          {mode === 'customer-email' && (
+            <form onSubmit={handleCustomerEmail} className="space-y-3.5">
+              <div>
+                <h2 className="font-serif text-[22px] font-bold text-[#18191B]">
+                  Register / Sign Up
+                </h2>
+                <p className="text-xs text-[#7A7E85] mt-0.5">
+                  Create your account for bespoke fitting passes.
+                </p>
+              </div>
+
+              <Field label="Your name" value={cName} onChange={setCName} placeholder="Sarah Jenkins" />
+              <Field label="Email address *" type="email" required value={cEmail} onChange={setCEmail} placeholder="name@example.com" />
+              <Field
+                label="Mobile phone number *"
+                type="tel"
+                required
+                value={cPhone}
+                onChange={setCPhone}
+                placeholder="+91 98765 43210"
+              />
+
+              <SubmitBtn loading={loading} label="Create Account & Continue" />
+
+              <div className="text-center pt-1 border-t border-[#F3EFEA]">
+                <span className="text-xs text-[#7A7E85]">Already registered? </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setNotice('')
+                    setMode('customer-mobile')
+                  }}
+                  className="text-xs font-bold text-[#9E593B] hover:text-[#7A4027] hover:underline cursor-pointer ml-1"
+                >
+                  Login with Mobile
+                </button>
+              </div>
+            </form>
           )}
 
           {/* ================================================================ */}
           {/* STUDIO – Sign In / Register Options                              */}
           {/* ================================================================ */}
           {mode === 'studio-options' && (
-            <div className="space-y-5">
+            <div className="space-y-4">
               <div>
-                <p className="text-[11px] font-extrabold uppercase tracking-[0.16em] text-[#9E593B]">Certified Partner Portal</p>
-                <h2 className="font-serif text-[26px] font-bold text-[#0F1115] mt-0.5 leading-tight">Sign in to Studio</h2>
-                <p className="text-[13px] text-[#6B7280] mt-1.5">Access your live orders, capacity controls, and weekly payouts.</p>
+                <h2 className="font-serif text-[24px] font-bold text-[#18191B] tracking-tight leading-tight">
+                  Welcome to Darzi Studio
+                </h2>
+                <p className="text-xs text-[#7A7E85] mt-1">
+                  Access live orders, workbench controls, and atelier payouts.
+                </p>
               </div>
 
-              <div className="space-y-2.5">
-                {/* Google – Studio role */}
-                <GoogleButton label="Sign in with Google (Studio)" loading={loading} onClick={() => triggerGoogle('STUDIO')} bordered />
-                {/* Email login to existing studio */}
-                <AuthButton icon={<Mail size={15} className="text-[#9E593B]" />} label="Sign in with Email" onClick={() => setMode('studio-login')} />
-                {/* Register brand-new studio */}
+              <div className="space-y-2.5 pt-1">
+                <GoogleButton label="Continue with Google" loading={loading} onClick={() => triggerGoogleStudio()} bordered />
                 <button
-                  onClick={() => setMode('studio-register')}
-                  className="w-full flex items-center justify-center gap-2 rounded-xl bg-[#0F1115] hover:bg-[#9E593B] py-3 text-[13px] font-bold text-white transition-colors"
+                  type="button"
+                  onClick={() => setMode('studio-login')}
+                  className="w-full flex items-center justify-center gap-2 rounded-xl bg-[#FAF8F5] hover:bg-[#F3EFEA] border border-[#E8E1D5] py-2.5 text-[13px] font-semibold text-[#18191B] transition-colors"
                 >
-                  <Store size={15} />
-                  Register New Atelier Studio
+                  <Phone size={14} className="text-[#9E593B]" />
+                  <span>Continue with Mobile</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMode('studio-login')}
+                  className="w-full flex items-center justify-center gap-2 rounded-xl bg-[#FAF8F5] hover:bg-[#F3EFEA] border border-[#E8E1D5] py-2.5 text-[13px] font-semibold text-[#18191B] transition-colors"
+                >
+                  <Mail size={14} className="text-[#9E593B]" />
+                  <span>Continue with Email</span>
                 </button>
               </div>
 
-              <Divider />
-              <div className="text-center">
-                <button
-                  onClick={() => {
-                    onSuccess({ name: 'Atelier SoHo (Demo)', contact: 'demo@ateliersoho.com', method: 'guest', role: 'STUDIO', studioId: 'atelier-soho', studioName: 'Atelier SoHo Tailors' })
-                  }}
-                  className="text-[12px] text-[#9CA3AF] hover:text-[#374151] underline underline-offset-4 transition-colors"
-                >
-                  Explore demo studio dashboard
-                </button>
-              </div>
+              <p className="text-center text-[10px] text-[#9CA3AF]">
+                By continuing you agree to our Terms &amp; Privacy Policy.
+              </p>
             </div>
           )}
 
@@ -484,35 +1117,33 @@ export function AuthModal({ isOpen, onClose, onSuccess, targetRole = 'CUSTOMER',
           {/* STUDIO – Sign Up Options                                         */}
           {/* ================================================================ */}
           {mode === 'studio-signup-options' && (
-            <div className="space-y-5">
+            <div className="space-y-4">
               <div>
-                <p className="text-[11px] font-extrabold uppercase tracking-[0.16em] text-[#9E593B]">Certified Partner Portal</p>
-                <h2 className="font-serif text-[26px] font-bold text-[#0F1115] mt-0.5 leading-tight">Sign Up for Studio</h2>
-                <p className="text-[13px] text-[#6B7280] mt-1.5">Join Darzi as a partner atelier. 3 quick steps — live in under 5 minutes.</p>
+                <p className="text-[10px] font-extrabold uppercase tracking-widest text-[#9E593B]">Partner Portal</p>
+                <h2 className="font-serif text-[24px] font-bold text-[#18191B] mt-0.5">Register your Studio</h2>
+                <p className="text-xs text-[#7A7E85] mt-0.5">Join Darzi as a certified partner atelier.</p>
               </div>
 
-              <div className="space-y-2.5">
-                {/* Google sign-up with Studio role */}
-                <GoogleButton label="Sign up with Google (Studio)" loading={loading} onClick={() => triggerGoogle('STUDIO')} bordered />
-                {/* Goes straight to the 3-step form */}
-                <AuthButton icon={<Mail size={15} className="text-[#9E593B]" />} label="Sign up with Email" onClick={() => setMode('studio-register')} />
+              <div className="space-y-2.5 pt-1">
+                <GoogleButton label="Sign up with Google (Studio)" loading={loading} onClick={() => triggerGoogleStudio()} bordered />
                 <button
-                  onClick={() => setMode('studio-register')}
-                  className="w-full flex items-center justify-center gap-2 rounded-xl bg-[#0F1115] hover:bg-[#9E593B] py-3 text-[13px] font-bold text-white transition-colors"
+                  type="button"
+                  onClick={() => setMode('studio-login')}
+                  className="w-full flex items-center justify-center gap-2 rounded-xl bg-[#0F1115] hover:bg-[#9E593B] py-2.5 text-[13px] font-bold text-white transition-colors"
                 >
-                  <Store size={15} />
-                  Register New Atelier Studio
+                  <Store size={14} />
+                  <span>Register with Email / Mobile</span>
                 </button>
               </div>
 
               <Divider />
               <div className="text-center">
-                <span className="text-[12px] text-[#9CA3AF]">Already have a studio? </span>
+                <span className="text-xs text-[#9CA3AF]">Already have a studio? </span>
                 <button
                   onClick={() => setMode('studio-options')}
-                  className="text-[12px] text-[#9E593B] font-semibold hover:underline underline-offset-4 transition-colors"
+                  className="text-xs text-[#9E593B] font-semibold hover:underline"
                 >
-                  Sign in instead
+                  Sign in
                 </button>
               </div>
             </div>
@@ -522,172 +1153,15 @@ export function AuthModal({ isOpen, onClose, onSuccess, targetRole = 'CUSTOMER',
           {/* STUDIO – Email Login Form                                        */}
           {/* ================================================================ */}
           {mode === 'studio-login' && (
-            <form onSubmit={handleStudioLogin} className="space-y-4">
+            <form onSubmit={handleStudioLogin} className="space-y-3.5">
               <div>
-                <p className="text-[11px] font-extrabold uppercase tracking-[0.16em] text-[#9E593B]">Partner Login</p>
-                <h2 className="font-serif text-2xl font-bold text-[#0F1115] mt-0.5">Welcome back</h2>
-                <p className="text-xs text-[#6B7280] mt-1">Enter your registered partner email to access the studio dashboard.</p>
+                <h2 className="font-serif text-[22px] font-bold text-[#18191B]">Partner Login</h2>
+                <p className="text-xs text-[#7A7E85] mt-0.5">Enter your registered email or phone.</p>
               </div>
 
-              <Field label="Partner email address" type="email" required value={sLoginEmail} onChange={setSLoginEmail} placeholder="marco@ateliersoho.com" />
-              <Field label="Studio name (optional)" value={sTailorName} onChange={setSTailorName} placeholder="Atelier SoHo Tailors" />
-
+              <Field label="Partner email or phone" required value={sLoginEmail} onChange={setSLoginEmail} placeholder="marco@ateliersoho.com" />
               <SubmitBtn loading={loading} label="Access Studio Dashboard" />
             </form>
-          )}
-
-          {/* ================================================================ */}
-          {/* STUDIO – 3-Step Registration                                     */}
-          {/* ================================================================ */}
-          {mode === 'studio-register' && (
-            <div className="space-y-5">
-              {/* Header */}
-              <div>
-                <p className="text-[11px] font-extrabold uppercase tracking-[0.16em] text-[#9E593B]">Partner Sign Up</p>
-                <h2 className="font-serif text-[24px] font-bold text-[#0F1115] mt-0.5 leading-tight">Create your Studio Account</h2>
-                <p className="text-xs text-[#6B7280] mt-1">3 quick steps — get live on Darzi in under 5 minutes.</p>
-              </div>
-
-              {/* Progress bar */}
-              <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <p className="text-[11px] font-bold text-[#374151]">
-                    Step {registerStep} of 3
-                  </p>
-                  <span className="text-[11px] font-bold text-[#6B7280]">{Math.round((registerStep / 3) * 100)}%</span>
-                </div>
-                <div className="h-1.5 rounded-full bg-[#E5DFD5] overflow-hidden">
-                  <div
-                    className="h-full rounded-full bg-[#9E593B] transition-all duration-300"
-                    style={{ width: `${(registerStep / 3) * 100}%` }}
-                  />
-                </div>
-              </div>
-
-              {/* ── Step 1: Location ─────────────────────────────────────── */}
-              {registerStep === 1 && (
-                <div className="space-y-4">
-                  <div>
-                    <h3 className="font-serif text-xl font-bold text-[#0F1115]">1. Your studio location</h3>
-                    <p className="text-xs text-[#6B7280] mt-0.5">We route nearby alteration customers to your atelier.</p>
-                  </div>
-
-                  <Field label="Atelier / Shop name *" required value={sName} onChange={setSName} placeholder="Atelier SoHo Tailors" />
-                  <div className="grid grid-cols-2 gap-3">
-                    <Field label="Area / Neighborhood *" required value={sArea} onChange={setSArea} placeholder="SoHo, Kensington" />
-                    <Field label="Postcode *" required value={sPostcode} onChange={setSPostcode} placeholder="W8 4EP" />
-                  </div>
-                  <Field label="Street address" value={sAddress} onChange={setSAddress} placeholder="18 Kensington Church St" />
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (!sName || !sArea || !sPostcode) { setError('Please fill in studio name, area, and postcode.'); return }
-                      setError('')
-                      setRegisterStep(2)
-                    }}
-                    className="w-full flex items-center justify-center gap-2 rounded-xl bg-[#0F1115] hover:bg-[#9E593B] py-3 text-[13px] font-bold text-white transition-colors"
-                  >
-                    Next <ArrowRight size={14} />
-                  </button>
-                </div>
-              )}
-
-              {/* ── Step 2: Contact ──────────────────────────────────────── */}
-              {registerStep === 2 && (
-                <div className="space-y-4">
-                  <div>
-                    <h3 className="font-serif text-xl font-bold text-[#0F1115]">2. Lead tailor contact</h3>
-                    <p className="text-xs text-[#6B7280] mt-0.5">Who receives bookings and payout notifications?</p>
-                  </div>
-
-                  <Field label="Lead master tailor name *" required value={sTailorName} onChange={setSTailorName} placeholder="Marco Rossi" />
-                  <Field label="Partner email *" type="email" required value={sEmail} onChange={setSEmail} placeholder="marco@ateliersoho.com" />
-                  <Field label="Direct phone *" type="tel" required value={sPhone} onChange={setSPhone} placeholder="+44 7700 900123" />
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (!sTailorName || !sEmail || !sPhone) { setError('Please fill in name, email, and phone.'); return }
-                      setError('')
-                      setRegisterStep(3)
-                    }}
-                    className="w-full flex items-center justify-center gap-2 rounded-xl bg-[#0F1115] hover:bg-[#9E593B] py-3 text-[13px] font-bold text-white transition-colors"
-                  >
-                    Next <ArrowRight size={14} />
-                  </button>
-                </div>
-              )}
-
-              {/* ── Step 3: Operations ───────────────────────────────────── */}
-              {registerStep === 3 && (
-                <form onSubmit={handleStudioRegister} className="space-y-4">
-                  <div>
-                    <h3 className="font-serif text-xl font-bold text-[#0F1115]">3. Machines & specialties</h3>
-                    <p className="text-xs text-[#6B7280] mt-0.5">Match you to the right alteration job types.</p>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-[11px] font-bold uppercase tracking-wider text-[#374151] mb-1">Machines</label>
-                      <select
-                        value={sMachines}
-                        onChange={(e) => setSMachines(e.target.value)}
-                        className="w-full rounded-xl border border-[#D1D5DB] px-3 py-2 text-xs font-semibold text-[#111827] focus:outline-none"
-                      >
-                        <option value="2-3">2–3 machines</option>
-                        <option value="4-6">4–6 machines</option>
-                        <option value="8+">8+ machines</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-[11px] font-bold uppercase tracking-wider text-[#374151] mb-1">Daily limit</label>
-                      <select
-                        value={sCapacity}
-                        onChange={(e) => setSCapacity(e.target.value)}
-                        className="w-full rounded-xl border border-[#D1D5DB] px-3 py-2 text-xs font-semibold text-[#111827] focus:outline-none"
-                      >
-                        <option value="15">15 / day</option>
-                        <option value="25">25 / day</option>
-                        <option value="50">50 / day</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-[11px] font-bold uppercase tracking-wider text-[#374151] mb-2">Specialties</label>
-                    <div className="flex flex-wrap gap-2">
-                      {SPECIALTIES.map((s) => {
-                        const on = sSpecialties.includes(s)
-                        return (
-                          <button
-                            key={s}
-                            type="button"
-                            onClick={() => toggleSpecialty(s)}
-                            className={`rounded-full px-3 py-1 text-[11px] font-semibold border transition-all ${on
-                              ? 'bg-[#0F1115] text-white border-[#0F1115]'
-                              : 'bg-white text-[#374151] border-[#D1D5DB] hover:border-[#9E593B]'
-                              }`}
-                          >
-                            {on && <Check size={10} className="inline mr-1" />}
-                            {s}
-                          </button>
-                        )
-                      })}
-                    </div>
-                  </div>
-
-                  <button
-                    type="submit"
-                    disabled={loading}
-                    className="w-full flex items-center justify-center gap-2 rounded-xl bg-[#0F1115] hover:bg-[#9E593B] py-3 text-[13px] font-bold text-white transition-colors disabled:opacity-60"
-                  >
-                    <Sparkles size={15} />
-                    {loading ? 'Activating studio…' : 'Open Studio Dashboard'}
-                  </button>
-                </form>
-              )}
-            </div>
           )}
         </div>
       </div>
@@ -695,67 +1169,71 @@ export function AuthModal({ isOpen, onClose, onSuccess, targetRole = 'CUSTOMER',
   )
 }
 
-// ── Reusable small components ────────────────────────────────────────────────
+// ── Reusable Small Components ───────────────────────────────────────────────
 
-function GoogleButton({ label, loading, onClick, bordered }: {
-  label: string; loading: boolean; onClick: () => void; bordered?: boolean
+function GoogleButton({
+  label,
+  loading,
+  onClick,
+  bordered,
+}: {
+  label: string
+  loading: boolean
+  onClick: () => void
+  bordered?: boolean
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
       disabled={loading}
-      className={`w-full flex items-center justify-center gap-3 rounded-xl py-3 text-[13px] font-semibold transition-all disabled:opacity-60 ${bordered
-        ? 'border-2 border-[#0F1115] bg-white text-[#0F1115] hover:bg-[#FAF8F5]'
-        : 'bg-white border border-[#D1D5DB] text-[#374151] hover:bg-[#F9FAFB]'
+      className={`w-full flex items-center justify-center gap-2.5 rounded-xl py-2.5 text-[13px] font-semibold transition-all disabled:opacity-60 ${bordered
+        ? 'border border-[#DDD6CB] bg-white text-[#18191B] hover:bg-[#FAF8F5]'
+        : 'bg-white border border-[#DDD6CB] text-[#18191B] hover:bg-[#FAF8F5]'
         }`}
     >
       <GoogleLogo />
-      {loading ? 'Connecting…' : label}
-    </button>
-  )
-}
-
-function AuthButton({ icon, label, onClick }: { icon: React.ReactNode; label: string; onClick: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="w-full flex items-center justify-center gap-2.5 rounded-xl bg-[#F4EFEA] hover:bg-[#EAE4DC] py-3 text-[13px] font-semibold text-[#0F1115] transition-colors"
-    >
-      {icon}
-      {label}
+      <span>{loading ? 'Connecting…' : label}</span>
     </button>
   )
 }
 
 function Field({
-  label, value, onChange, placeholder, type = 'text', required = false,
+  label,
+  value,
+  onChange,
+  placeholder,
+  type = 'text',
+  required = false,
 }: {
-  label: string; value: string; onChange: (v: string) => void;
-  placeholder?: string; type?: string; required?: boolean
+  label: string
+  value: string
+  onChange: (v: string) => void
+  placeholder?: string
+  type?: string
+  required?: boolean
 }) {
   return (
     <div>
-      <label className="block text-[11px] font-bold uppercase tracking-wider text-[#374151] mb-1">{label}</label>
+      <label className="block text-[11px] font-bold uppercase tracking-wider text-[#5A5D64] mb-1">{label}</label>
       <input
         type={type}
         required={required}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        className="w-full rounded-xl border border-[#D1D5DB] px-3.5 py-2.5 text-[13px] text-[#111827] placeholder:text-[#9CA3AF] focus:border-[#9E593B] focus:outline-none transition-colors"
+        className="w-full rounded-xl border border-[#DDD6CB] bg-white px-3.5 py-2 text-[13px] text-[#18191B] placeholder:text-[#9CA3AF] focus:border-[#9E593B] focus:outline-none transition-colors"
       />
     </div>
   )
 }
 
-function SubmitBtn({ loading, label }: { loading: boolean; label: string }) {
+function SubmitBtn({ loading, label, disabled }: { loading: boolean; label: string; disabled?: boolean }) {
   return (
     <button
       type="submit"
-      disabled={loading}
-      className="w-full rounded-xl bg-[#0F1115] hover:bg-[#9E593B] py-3 text-[13px] font-bold text-white transition-colors disabled:opacity-60"
+      disabled={loading || disabled}
+      className="w-full rounded-xl bg-[#0F1115] hover:bg-[#9E593B] py-2.5 text-[13px] font-bold text-white transition-all active:scale-[0.99] disabled:opacity-50 disabled:cursor-not-allowed shadow-sm cursor-pointer"
     >
       {loading ? 'Please wait…' : label}
     </button>
@@ -765,9 +1243,9 @@ function SubmitBtn({ loading, label }: { loading: boolean; label: string }) {
 function Divider() {
   return (
     <div className="flex items-center gap-3">
-      <div className="flex-1 h-px bg-[#E5DFD5]" />
+      <div className="flex-1 h-px bg-[#EAE5DE]" />
       <span className="text-[10px] font-bold uppercase tracking-widest text-[#9CA3AF]">or</span>
-      <div className="flex-1 h-px bg-[#E5DFD5]" />
+      <div className="flex-1 h-px bg-[#EAE5DE]" />
     </div>
   )
 }
@@ -775,10 +1253,303 @@ function Divider() {
 function GoogleLogo() {
   return (
     <svg className="size-4 shrink-0" viewBox="0 0 24 24">
-      <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
-      <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
-      <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
-      <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
+      <path
+        fill="#4285F4"
+        d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+      />
+      <path
+        fill="#34A853"
+        d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+      />
+      <path
+        fill="#FBBC05"
+        d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
+      />
+      <path
+        fill="#EA4335"
+        d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
+      />
+    </svg>
+  )
+}
+
+// ── Role-Selection Illustrations ─────────────────────────────────────────────
+
+function CustomerIllustration() {
+  return (
+    <svg viewBox="0 0 200 150" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full h-auto">
+      <defs>
+        <radialGradient id="custGlow" cx="50%" cy="50%" r="50%">
+          <stop offset="0%" stopColor="#9E593B" stopOpacity="0.14" />
+          <stop offset="70%" stopColor="#9E593B" stopOpacity="0.04" />
+          <stop offset="100%" stopColor="#9E593B" stopOpacity="0" />
+        </radialGradient>
+        <linearGradient id="mannequinGrad" x1="75" y1="36" x2="125" y2="108" gradientUnits="userSpaceOnUse">
+          <stop offset="0%" stopColor="#F9F6F0" />
+          <stop offset="50%" stopColor="#EFE8DC" />
+          <stop offset="100%" stopColor="#DECEBE" />
+        </linearGradient>
+        <linearGradient id="woodGrad" x1="94" y1="20" x2="106" y2="148" gradientUnits="userSpaceOnUse">
+          <stop offset="0%" stopColor="#8C4A2D" />
+          <stop offset="50%" stopColor="#6C351D" />
+          <stop offset="100%" stopColor="#4A2211" />
+        </linearGradient>
+        <linearGradient id="tapeGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#FDE68A" />
+          <stop offset="100%" stopColor="#F59E0B" />
+        </linearGradient>
+        <linearGradient id="goldShears" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#FBBF24" />
+          <stop offset="60%" stopColor="#D97706" />
+          <stop offset="100%" stopColor="#92400E" />
+        </linearGradient>
+      </defs>
+
+      {/* Ambient background aura */}
+      <circle cx="100" cy="75" r="70" fill="url(#custGlow)" />
+
+      {/* Tailor's measuring arc guide */}
+      <path d="M30 45 C65 15, 135 15, 170 45" stroke="#9E593B" strokeWidth="0.8" strokeDasharray="3 3" strokeOpacity="0.3" fill="none" />
+      <path d="M25 115 C60 145, 140 145, 175 115" stroke="#9E593B" strokeWidth="0.8" strokeDasharray="3 3" strokeOpacity="0.25" fill="none" />
+
+      {/* ── Mannequin Stand ── */}
+      {/* Central Turned Wood Pole */}
+      <rect x="97.5" y="105" width="5" height="34" rx="2.5" fill="url(#woodGrad)" />
+      {/* Adjustment ring */}
+      <circle cx="100" cy="116" r="3.5" fill="#D4AF37" stroke="#8C4A2D" strokeWidth="0.8" />
+      {/* Turned Wood Pedestal Base */}
+      <path d="M91 138 C94 133, 106 133, 109 138 L114 144 H86 Z" fill="url(#woodGrad)" />
+      {/* Tripod legs */}
+      <path d="M88 141 C76 142, 66 144, 55 147" stroke="url(#woodGrad)" strokeWidth="3" strokeLinecap="round" />
+      <path d="M112 141 C124 142, 134 144, 145 147" stroke="url(#woodGrad)" strokeWidth="3" strokeLinecap="round" />
+
+      {/* ── Mannequin Torso ── */}
+      {/* Turned Wood Finial on Top */}
+      <ellipse cx="100" cy="21" rx="6" ry="4.5" fill="url(#woodGrad)" />
+      <rect x="98" y="24" width="4" height="6" rx="1.5" fill="url(#woodGrad)" />
+      {/* Neck collar */}
+      <path d="M95 30 Q100 29 105 30 L106 37 Q100 39 94 37 Z" fill="#E8DDD2" stroke="#9E593B" strokeWidth="0.8" strokeOpacity="0.5" />
+      <line x1="94" y1="33" x2="106" y2="33" stroke="#D4AF37" strokeWidth="1" />
+
+      {/* Couture Torso Body */}
+      <path
+        d="M94 36 C84 37, 72 41, 70 48 C68 55, 74 68, 77 78 C80 87, 83 94, 76 102 C72 106, 75 108, 80 108 H120 C125 108, 128 106, 124 102 C117 94, 120 87, 123 78 C126 68, 132 55, 130 48 C128 41, 116 37, 106 36 Z"
+        fill="url(#mannequinGrad)"
+        stroke="#9E593B"
+        strokeWidth="1.2"
+        strokeOpacity="0.6"
+      />
+
+      {/* Tailor's Princess Seams (Dashed stitch lines) */}
+      <path d="M86 42 C82 58, 87 84, 88 108" stroke="#9E593B" strokeWidth="0.9" strokeDasharray="2.5 2" strokeOpacity="0.45" fill="none" />
+      <path d="M114 42 C118 58, 113 84, 112 108" stroke="#9E593B" strokeWidth="0.9" strokeDasharray="2.5 2" strokeOpacity="0.45" fill="none" />
+      {/* Center grainline */}
+      <path d="M100 38 L100 108" stroke="#9E593B" strokeWidth="0.6" strokeDasharray="4 2.5" strokeOpacity="0.3" fill="none" />
+      {/* Waistline contour mark */}
+      <path d="M81 82 Q100 86 119 82" stroke="#9E593B" strokeWidth="0.8" strokeDasharray="2 2" strokeOpacity="0.35" fill="none" />
+
+      {/* ── Draped Measuring Tape ── */}
+      <path
+        d="M78 44 C84 48, 92 62, 94 76 C96 88, 90 94, 84 96 C74 98, 66 104, 60 114"
+        stroke="url(#tapeGrad)"
+        strokeWidth="3.5"
+        strokeLinecap="round"
+        fill="none"
+      />
+      <path
+        d="M78 44 C84 48, 92 62, 94 76 C96 88, 90 94, 84 96 C74 98, 66 104, 60 114"
+        stroke="#78350F"
+        strokeWidth="3.5"
+        strokeDasharray="0.8 2"
+        strokeOpacity="0.75"
+        strokeLinecap="round"
+        fill="none"
+      />
+
+      {/* ── Silk Thread Spool (Top Right) ── */}
+      <g transform="translate(142, 28)">
+        <ellipse cx="10" cy="4" rx="8" ry="3.5" fill="url(#woodGrad)" />
+        <rect x="3" y="4" width="14" height="15" fill="#9E593B" rx="1.5" />
+        <path d="M3 6 Q10 8 17 6 M3 10 Q10 12 17 10 M3 14 Q10 16 17 14" stroke="#F9ECE3" strokeWidth="0.6" strokeOpacity="0.6" />
+        <ellipse cx="10" cy="19" rx="8" ry="3.5" fill="url(#woodGrad)" />
+        {/* Thread unwinding */}
+        <path d="M17 16 C22 24, 20 40, 10 52 C5 58, 2 64, -12 70" stroke="#9E593B" strokeWidth="0.9" strokeDasharray="3 2" strokeOpacity="0.5" fill="none" />
+      </g>
+
+      {/* ── Tailor's Gold Shears / Scissors (Bottom Left) ── */}
+      <g transform="translate(24, 86) rotate(-22)">
+        {/* Blade 1 */}
+        <path d="M16 12 L42 5 C43 5, 43 8, 22 17 Z" fill="#CBD5E1" stroke="#94A3B8" strokeWidth="0.6" />
+        {/* Blade 2 */}
+        <path d="M16 14 L42 22 C43 22, 42 19, 22 13 Z" fill="#94A3B8" stroke="#64748B" strokeWidth="0.6" />
+        {/* Pivot screw */}
+        <circle cx="20" cy="14" r="2.2" fill="#F59E0B" stroke="#78350F" strokeWidth="0.6" />
+        {/* Gold Handle loops */}
+        <circle cx="8" cy="8" r="6" fill="none" stroke="url(#goldShears)" strokeWidth="2.4" />
+        <circle cx="8" cy="20" r="6" fill="none" stroke="url(#goldShears)" strokeWidth="2.4" />
+        <path d="M13 10 L18 13 M13 18 L18 15" stroke="url(#goldShears)" strokeWidth="2.2" strokeLinecap="round" />
+      </g>
+
+      {/* ── Pearl-Head Pins in Shoulder ── */}
+      <line x1="126" y1="44" x2="134" y2="34" stroke="#94A3B8" strokeWidth="1" strokeLinecap="round" />
+      <circle cx="135" cy="33" r="2.5" fill="#FAF5F0" stroke="#9E593B" strokeWidth="0.7" />
+      <line x1="128" y1="52" x2="137" y2="46" stroke="#94A3B8" strokeWidth="1" strokeLinecap="round" />
+      <circle cx="138" cy="45" r="2.5" fill="#F59E0B" stroke="#78350F" strokeWidth="0.7" />
+
+      {/* Craftsmanship sparkles */}
+      <text x="38" y="32" fontSize="13" fill="#D4AF37" fillOpacity="0.75">✦</text>
+      <text x="162" y="96" fontSize="9" fill="#9E593B" fillOpacity="0.6">✦</text>
+      <text x="144" y="128" fontSize="11" fill="#D4AF37" fillOpacity="0.5">✦</text>
+      <text x="32" y="68" fontSize="8" fill="#9E593B" fillOpacity="0.45">✦</text>
+    </svg>
+  )
+}
+
+function StudioIllustration() {
+  return (
+    <svg viewBox="0 0 200 150" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full h-auto">
+      <defs>
+        <radialGradient id="studioGlow" cx="50%" cy="50%" r="50%">
+          <stop offset="0%" stopColor="#9E593B" stopOpacity="0.28" />
+          <stop offset="60%" stopColor="#9E593B" stopOpacity="0.08" />
+          <stop offset="100%" stopColor="#9E593B" stopOpacity="0" />
+        </radialGradient>
+        <linearGradient id="machineBody" x1="40" y1="28" x2="160" y2="115" gradientUnits="userSpaceOnUse">
+          <stop offset="0%" stopColor="#222834" />
+          <stop offset="45%" stopColor="#181D26" />
+          <stop offset="100%" stopColor="#0F131A" />
+        </linearGradient>
+        <linearGradient id="goldAccent" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#FCD34D" />
+          <stop offset="50%" stopColor="#D97706" />
+          <stop offset="100%" stopColor="#92400E" />
+        </linearGradient>
+        <linearGradient id="steelChrome" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stopColor="#FFFFFF" />
+          <stop offset="40%" stopColor="#E2E8F0" />
+          <stop offset="100%" stopColor="#94A3B8" />
+        </linearGradient>
+      </defs>
+
+      {/* Atmospheric Workbench Glow */}
+      <circle cx="100" cy="75" r="70" fill="url(#studioGlow)" />
+
+      {/* ── Precision Workbench Bed ── */}
+      {/* Base shadow */}
+      <rect x="20" y="118" width="160" height="4" rx="2" fill="#000000" fillOpacity="0.5" />
+      {/* Solid workbench plate */}
+      <rect x="22" y="108" width="156" height="11" rx="3.5" fill="#1A1F29" stroke="#333D4F" strokeWidth="1" />
+      {/* Millimeter ruler markings along bed */}
+      <line x1="28" y1="113" x2="78" y2="113" stroke="#D4AF37" strokeWidth="0.8" strokeDasharray="1.5 2.5" strokeOpacity="0.7" />
+      {/* Chrome needle throat plate */}
+      <rect x="54" y="107.5" width="30" height="3" rx="1" fill="url(#steelChrome)" />
+      {/* Feed dog slots */}
+      <line x1="62" y1="109" x2="76" y2="109" stroke="#1E293B" strokeWidth="1" strokeDasharray="2 1.5" />
+
+      {/* ── Cast Iron Sewing Machine Body ── */}
+      <path
+        d="
+          M150 108
+          L150 56
+          C150 40, 138 32, 122 32
+          L58 32
+          C46 32, 40 40, 40 52
+          L40 76
+          C40 82, 44 85, 50 85
+          L64 85
+          C68 85, 72 89, 72 94
+          L72 108
+          Z
+        "
+        fill="url(#machineBody)"
+        stroke="#3A4456"
+        strokeWidth="1.2"
+      />
+
+      {/* Gold Atelier Filigree Pinstriping */}
+      <path
+        d="
+          M144 104
+          L144 58
+          C144 46, 134 38, 120 38
+          L62 38
+          C52 38, 46 44, 46 54
+          L46 72
+        "
+        stroke="url(#goldAccent)"
+        strokeWidth="1.2"
+        strokeLinecap="round"
+        strokeDasharray="60 3 8 3"
+        fill="none"
+      />
+
+      {/* ── Handwheel / Balance Wheel (Right) ── */}
+      <g transform="translate(150, 42)">
+        <ellipse cx="6" cy="22" rx="7" ry="26" fill="#1F2633" stroke="url(#goldAccent)" strokeWidth="1.2" />
+        <ellipse cx="6" cy="22" rx="3.5" ry="16" fill="#131720" stroke="#4B5563" strokeWidth="0.8" />
+        {/* Wheel spoke details */}
+        <line x1="6" y1="10" x2="6" y2="34" stroke="url(#goldAccent)" strokeWidth="1" />
+        {/* Center clutch knob */}
+        <circle cx="6" cy="22" r="3.2" fill="url(#steelChrome)" stroke="#78350F" strokeWidth="0.6" />
+      </g>
+
+      {/* ── Spool Pins & Twin Thread Spools (Top) ── */}
+      {/* Spool 1 (Terracotta Silk) */}
+      <rect x="118" y="16" width="3" height="16" fill="url(#steelChrome)" rx="1" />
+      <rect x="114" y="20" width="11" height="12" rx="1.5" fill="#9E593B" stroke="#C48B6F" strokeWidth="0.6" />
+      <ellipse cx="119.5" cy="20" rx="5.5" ry="1.8" fill="#F3D5C3" />
+      {/* Spool 2 (Gold Thread) */}
+      <rect x="134" y="18" width="3" height="14" fill="url(#steelChrome)" rx="1" />
+      <rect x="130" y="22" width="11" height="10" rx="1.5" fill="#D97706" stroke="#FBBF24" strokeWidth="0.6" />
+      <ellipse cx="135.5" cy="22" rx="5.5" ry="1.6" fill="#FEF3C7" />
+
+      {/* ── Thread Take-Up Lever & Tension Assembly ── */}
+      {/* Thread guide rod */}
+      <path d="M116 20 C100 16, 75 18, 54 28" stroke="#FCD34D" strokeWidth="0.9" strokeDasharray="3 2" fill="none" strokeOpacity="0.8" />
+      {/* Dynamic Take-Up Lever */}
+      <path d="M54 36 L48 24" stroke="url(#steelChrome)" strokeWidth="2.4" strokeLinecap="round" />
+      <circle cx="48" cy="24" r="1.6" fill="#F59E0B" />
+      {/* Tension Disc Knob on Faceplate */}
+      <circle cx="56" cy="56" r="6" fill="#1E2532" stroke="url(#goldAccent)" strokeWidth="1.2" />
+      <circle cx="56" cy="56" r="2.5" fill="url(#steelChrome)" />
+
+      {/* ── Needle Bar & Presser Foot Mechanism ── */}
+      {/* Needle bar shaft */}
+      <rect x="47" y="52" width="3.5" height="42" rx="1.5" fill="url(#steelChrome)" />
+      {/* Needle clamp */}
+      <rect x="45.5" y="86" width="6.5" height="4.5" rx="1" fill="#475569" stroke="#94A3B8" strokeWidth="0.5" />
+      <circle cx="51" cy="88.2" r="1" fill="#F59E0B" />
+      {/* Precision Needle */}
+      <line x1="48.8" y1="90" x2="48.8" y2="108" stroke="#F8FAFC" strokeWidth="1.5" strokeLinecap="round" />
+      {/* Presser foot bar & shoe */}
+      <rect x="54" y="60" width="3" height="40" rx="1" fill="url(#steelChrome)" />
+      <path d="M52 100 L58 100 L62 106 L50 106 Z" fill="url(#steelChrome)" stroke="#64748B" strokeWidth="0.6" />
+
+      {/* Active Thread running through Needle */}
+      <path d="M48 24 L48 88 L48.8 106" stroke="#FCD34D" strokeWidth="0.9" fill="none" />
+
+      {/* ── Fabric Moving Under Foot ── */}
+      {/* Folded garment fabric */}
+      <path d="M26 107 C36 103, 46 104, 68 105 L96 105 C108 105, 118 106, 126 107.5 L124 112 H26 Z" fill="#9E593B" stroke="#B87150" strokeWidth="0.8" />
+      {/* Fresh stitches row */}
+      <line x1="28" y1="105.5" x2="66" y2="105.5" stroke="#FEF08A" strokeWidth="1.2" strokeDasharray="2.5 2" strokeLinecap="round" />
+
+      {/* ── Body Details: Stitch Dials & Badge ── */}
+      {/* Rotary stitch length dial */}
+      <circle cx="106" cy="62" r="8" fill="#131822" stroke="url(#goldAccent)" strokeWidth="1" />
+      <circle cx="106" cy="62" r="5" fill="#1E2532" />
+      <line x1="106" y1="57" x2="106" y2="60" stroke="#FCD34D" strokeWidth="1.2" strokeLinecap="round" />
+      {/* Reverse stitch lever */}
+      <rect x="98" y="78" width="16" height="3" rx="1.5" fill="url(#steelChrome)" />
+      {/* Atelier Gold Emblem */}
+      <rect x="80" y="44" width="18" height="8" rx="2" fill="#131822" stroke="url(#goldAccent)" strokeWidth="0.8" />
+      <text x="89" y="50" fontSize="5" fontWeight="bold" fill="#FCD34D" textAnchor="middle" letterSpacing="0.5">DARZI</text>
+
+      {/* Atelier atmosphere sparkles */}
+      <text x="30" y="42" fontSize="12" fill="#FCD34D" fillOpacity="0.85">✦</text>
+      <text x="165" y="32" fontSize="8" fill="#FFFFFF" fillOpacity="0.5">✦</text>
+      <text x="168" y="104" fontSize="10" fill="#FCD34D" fillOpacity="0.75">✦</text>
+      <text x="25" y="85" fontSize="7" fill="#FCD34D" fillOpacity="0.6">✦</text>
     </svg>
   )
 }

@@ -1,10 +1,14 @@
 'use client'
 
 import Image from 'next/image'
-import { ArrowRight, CheckCircle2, Clock, MapPin, Scissors, ShieldCheck, Sparkles, Store } from 'lucide-react'
+import { ArrowRight, CheckCircle2, MapPin, Scissors, ShieldCheck, Sparkles, Store } from 'lucide-react'
 import { type Screen } from './data'
+import { useApp } from './app-provider'
 
 export function HowItWorksPreview({ go }: { go: (s: Screen) => void }) {
+  const { user } = useApp()
+  const isCustomer = Boolean(user && user.role === 'CUSTOMER')
+
   const steps = [
     {
       n: '01',
@@ -116,18 +120,20 @@ export function HowItWorksPreview({ go }: { go: (s: Screen) => void }) {
             </p>
             <div className="flex flex-wrap items-center gap-3">
               <button
-                onClick={() => go('booking')}
+                onClick={() => go('book')}
                 className="flex items-center gap-2 rounded-full bg-white text-[#0F1115] px-7 py-3.5 text-xs font-bold uppercase tracking-wider shadow-sm transition-all hover:bg-[#FAF8F5] active:scale-95"
               >
                 <span>Book Fitting Pass</span>
                 <ArrowRight size={14} />
               </button>
-              <button
-                onClick={() => go('for-partners')}
-                className="rounded-full border border-white/30 px-6 py-3.5 text-xs font-bold uppercase tracking-wider text-white transition-colors hover:bg-white/10"
-              >
-                For Partner Stores
-              </button>
+              {!isCustomer && (
+                <button
+                  onClick={() => go('for-partners')}
+                  className="rounded-full border border-white/30 px-6 py-3.5 text-xs font-bold uppercase tracking-wider text-white transition-colors hover:bg-white/10"
+                >
+                  For Partner Stores
+                </button>
+              )}
             </div>
           </div>
         </div>

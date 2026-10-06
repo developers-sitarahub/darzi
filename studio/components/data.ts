@@ -1,4 +1,4 @@
-export type Screen = 'partner' | 'intake' | 'pipeline' | 'capacity' | 'payouts'
+export type Screen = 'partner' | 'intake' | 'pipeline' | 'payouts'
 
 export type OrderStatus =
   | 'Allocated'
@@ -9,19 +9,31 @@ export type OrderStatus =
   | 'Ready'
   | 'Collected'
   | 'Closed'
+  | 'Cancelled'
 
 export type User = {
   id?: string
   name: string
   contact: string
-  email?: string
-  avatar?: string
-  address?: string
-  postcode?: string
-  method: 'google' | 'apple' | 'email' | 'mobile' | 'guest'
-  role?: 'CUSTOMER' | 'STUDIO' | 'ADMIN'
-  studioId?: string
-  studioName?: string
+  email?: string | null
+  phone?: string | null
+  avatar?: string | null
+  address?: string | null
+  postcode?: string | null
+  method: 'google' | 'apple' | 'email' | 'mobile'
+  role?: 'CUSTOMER' | 'TEMP_STUDIO' | 'STUDIO' | 'ADMIN'
+  status?: 'ACTIVE' | 'INACTIVE'
+  studioId?: string | null
+  studioName?: string | null
+  area?: string | null
+  lat?: number | null
+  lng?: number | null
+  openingHours?: string | null
+  dailyCapacity?: number | null
+  machines?: number | null
+  workers?: number | null
+  specialties?: string[] | null
+  leadTailor?: string | null
 }
 
 export type StoreOption = {
@@ -30,6 +42,8 @@ export type StoreOption = {
   area: string
   address: string
   postcode: string
+  phone?: string
+  email?: string
   distance: string
   distanceMiles: number
   rating: number
@@ -42,6 +56,7 @@ export type StoreOption = {
   specialties: string[]
   retailSold: boolean
   coords: { lat: number; lng: number }
+  image?: string
 }
 
 export type FittingBooking = {
@@ -57,10 +72,14 @@ export type FittingBooking = {
   serviceName?: string
   storeId: string
   storeName?: string
+  storeAddress?: string
+  storePhone?: string
+  store?: StoreOption
   date: string
   timeSlot: string
   garmentBrand?: string
   fitNotes?: string
+  notes?: string
   pinnedAdjustment?: string
   sewingNotes?: string
   slaHours?: number
@@ -93,6 +112,7 @@ export type FittingBooking = {
   status: OrderStatus
   price: number
   otp: string
+  pickupOtpGenerated?: boolean
   createdAt?: string
 }
 

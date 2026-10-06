@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react'
 import Image from 'next/image'
+import { toast } from 'react-toastify'
 import {
   ChevronDown,
   ChevronLeft,
@@ -19,8 +20,10 @@ import {
   Sparkles,
 } from 'lucide-react'
 import { CityModal } from './city-modal'
-import { useCityLocation } from './use-city-location'
-import { GARMENT_CATEGORIES, type Screen, type User } from './data'
+import { useCityLocation, formatLocationDisplay } from './use-city-location'
+import { type Screen, type User, type GarmentCategory } from './data'
+import { fetchServices, getCurrentUser } from '@/lib/api'
+import { getRefreshToken } from '@/lib/cookies'
 
 function GarmentCategoryIcon({ categoryId, className = "size-4" }: { categoryId: string; className?: string }) {
   switch (categoryId) {
@@ -287,23 +290,36 @@ const CITIES = [
 ]
 
 export function HeroSection({ go, user, onOpenAuth, onQuickSearch, onRequestMeasurement }: HeroSectionProps) {
-  const [selectedCity, setSelectedCity] = useCityLocation('New York City, NY')
+  const [selectedCity, setSelectedCity] = useCityLocation()
   const [showCityPicker, setShowCityPicker] = useState(false)
 
   // Pickup / Schedule time selection state
   const [pickupOption, setPickupOption] = useState<'now' | 'schedule'>('now')
-  const [showTimePicker, setShowTimePicker] = useState(false)
   const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false)
   const [scheduleDateObj, setScheduleDateObj] = useState<Date>(new Date())
   const [selectedTime, setSelectedTime] = useState('03:30 PM')
 
   // Tailoring selection state
+  const [categories, setCategories] = useState<GarmentCategory[]>([])
   const [selectedGarmentId, setSelectedGarmentId] = useState('trousers')
   const [showGarmentPicker, setShowGarmentPicker] = useState(false)
-
-  const currentCategory = GARMENT_CATEGORIES.find((c) => c.id === selectedGarmentId) || GARMENT_CATEGORIES[0]
-  const [selectedAlteration, setSelectedAlteration] = useState(currentCategory.popularServices[0]?.name || '')
+  const [selectedAlteration, setSelectedAlteration] = useState('')
   const [showAlterationPicker, setShowAlterationPicker] = useState(false)
+
+  useEffect(() => {
+    fetchServices().then((svcs) => {
+      if (svcs && svcs.length > 0) {
+        setCategories(svcs)
+        const initialGarmentId = svcs[0].id
+        setSelectedGarmentId(initialGarmentId)
+        if (svcs[0].popularServices && svcs[0].popularServices.length > 0) {
+          setSelectedAlteration(svcs[0].popularServices[0].name)
+        }
+      }
+    })
+  }, [])
+
+  const currentCategory = categories.find((c) => c.id === selectedGarmentId) || categories[0]
 
   // Image Upload state
   const [uploadedImages, setUploadedImages] = useState<string[]>([])
@@ -315,7 +331,6 @@ export function HeroSection({ go, user, onOpenAuth, onQuickSearch, onRequestMeas
     const handleClickOutside = (event: MouseEvent) => {
       if (formRef.current && !formRef.current.contains(event.target as Node)) {
         setShowCityPicker(false)
-        setShowTimePicker(false)
         setShowGarmentPicker(false)
         setShowAlterationPicker(false)
       }
@@ -327,7 +342,7 @@ export function HeroSection({ go, user, onOpenAuth, onQuickSearch, onRequestMeas
   const handleGarmentChange = (garmentId: string) => {
     setSelectedGarmentId(garmentId)
     setShowGarmentPicker(false)
-    const category = GARMENT_CATEGORIES.find((c) => c.id === garmentId)
+    const category = categories.find((c) => c.id === garmentId)
     if (category && category.popularServices.length > 0) {
       setSelectedAlteration(category.popularServices[0].name)
     }
@@ -345,21 +360,48 @@ export function HeroSection({ go, user, onOpenAuth, onQuickSearch, onRequestMeas
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files
-    if (files && files.length > 0) {
-      const newUrls = Array.from(files).map((file) => URL.createObjectURL(file))
-      setUploadedImages((prev) => [...prev, ...newUrls])
+    if (!files || files.length === 0) return
+
+    if (uploadedImages.length >= 4) {
+      toast.error('You can upload a maximum of 4 garment photos.', { position: 'top-center' })
+      e.target.value = ''
+      return
     }
+
+    const availableSlots = 4 - uploadedImages.length
+    const fileList = Array.from(files).slice(0, availableSlots)
+
+    if (files.length > availableSlots) {
+      toast.info(`Only ${availableSlots} more photo(s) allowed (max 4).`, { position: 'top-center' })
+    }
+
+    const newUrls = fileList.map((file) => URL.createObjectURL(file))
+    setUploadedImages((prev) => [...prev, ...newUrls].slice(0, 4))
+    e.target.value = ''
   }
 
   const removeImage = (index: number) => {
     setUploadedImages((prev) => prev.filter((_, i) => i !== index))
   }
 
-  const selectedServiceObj = currentCategory.popularServices.find((s) => s.name === selectedAlteration) || currentCategory.popularServices[0]
+  const selectedServiceObj = currentCategory?.popularServices?.find((s) => s.name === selectedAlteration) || currentCategory?.popularServices?.[0]
 
-  const handleBookNow = () => {
+  const handleBookNow = async () => {
     if (!user) {
-      onOpenAuth?.()
+      const refToken = getRefreshToken()
+      if (refToken) {
+        const validated = await getCurrentUser()
+        if (!validated) {
+          onOpenAuth?.()
+          return
+        }
+      } else {
+        onOpenAuth?.()
+        return
+      }
+    }
+    if (!selectedServiceObj || !currentCategory) {
+      toast.info('Please select a service before proceeding.', { position: 'top-center' })
       return
     }
     onRequestMeasurement?.({
@@ -372,19 +414,26 @@ export function HeroSection({ go, user, onOpenAuth, onQuickSearch, onRequestMeas
       images: uploadedImages,
     })
     onQuickSearch?.(selectedCity.includes('Los Angeles') ? '90210' : '10012', selectedGarmentId)
-    go('confirm-measurement')
+    go('book')
   }
 
-  const handleConfirmSchedule = () => {
+  const handleConfirmSchedule = async () => {
     if (!user) {
       setIsScheduleModalOpen(false)
-      setShowTimePicker(false)
-      onOpenAuth?.()
-      return
+      const refToken = getRefreshToken()
+      if (refToken) {
+        const validated = await getCurrentUser()
+        if (!validated) {
+          onOpenAuth?.()
+          return
+        }
+      } else {
+        onOpenAuth?.()
+        return
+      }
     }
     setPickupOption('schedule')
     setIsScheduleModalOpen(false)
-    setShowTimePicker(false)
     onRequestMeasurement?.({
       city: selectedCity,
       garmentId: selectedGarmentId,
@@ -395,14 +444,8 @@ export function HeroSection({ go, user, onOpenAuth, onQuickSearch, onRequestMeas
       images: uploadedImages,
     })
     onQuickSearch?.(selectedCity.includes('Los Angeles') ? '90210' : '10012', selectedGarmentId)
-    go('confirm-measurement')
+    go('book')
   }
-
-  const formattedDateDisplay = scheduleDateObj.toLocaleDateString('en-US', {
-    weekday: 'short',
-    month: 'short',
-    day: 'numeric',
-  })
 
   return (
     <section className="relative bg-white py-6 sm:py-8 lg:py-10">
@@ -414,17 +457,18 @@ export function HeroSection({ go, user, onOpenAuth, onQuickSearch, onRequestMeas
 
             {/* 1. Location Header */}
             <div className="relative mb-3.5 flex items-center gap-1.5 text-[15px] font-medium text-black">
-              <MapPin size={17} className="text-black fill-black shrink-0" />
-              <span className="font-bold">{selectedCity}</span>
+              <MapPin size={18} className="text-[#0F1115] shrink-0" />
+              <span className="font-bold truncate max-w-[280px]" title={selectedCity}>
+                {formatLocationDisplay(selectedCity)}
+              </span>
               <button
                 type="button"
                 onClick={() => {
                   setShowCityPicker(true)
-                  setShowTimePicker(false)
                   setShowGarmentPicker(false)
                   setShowAlterationPicker(false)
                 }}
-                className="underline text-[#9E593B] font-semibold hover:text-[#0F1115] ml-1 transition-colors cursor-pointer"
+                className="underline text-[#9E593B] font-semibold hover:text-[#0F1115] ml-1 transition-colors cursor-pointer shrink-0"
               >
                 Change city
               </button>
@@ -451,7 +495,6 @@ export function HeroSection({ go, user, onOpenAuth, onQuickSearch, onRequestMeas
                       setShowGarmentPicker(!showGarmentPicker)
                       setShowAlterationPicker(false)
                       setShowCityPicker(false)
-                      setShowTimePicker(false)
                     }}
                     className={`relative z-0 flex items-center bg-[#F3F3F3] hover:bg-[#E8E8E8] rounded-[12px] px-3.5 py-3 border transition-all cursor-pointer select-none ${showGarmentPicker ? 'border-black bg-white shadow-sm' : 'border-transparent'
                       }`}
@@ -464,7 +507,13 @@ export function HeroSection({ go, user, onOpenAuth, onQuickSearch, onRequestMeas
                         Category of clothes
                       </span>
                       <span className="block text-[15px] font-bold text-black truncate leading-tight">
-                        {currentCategory.name} <span className="font-semibold text-black">(from ${currentCategory.startingPrice})</span>
+                        {currentCategory ? (
+                          <>
+                            {currentCategory.name} <span className="font-semibold text-black">(from ${currentCategory.startingPrice})</span>
+                          </>
+                        ) : (
+                          'Loading services...'
+                        )}
                       </span>
                     </div>
                     <ChevronDown size={18} className={`text-black shrink-0 transition-transform duration-200 ${showGarmentPicker ? 'rotate-180' : ''}`} />
@@ -475,7 +524,7 @@ export function HeroSection({ go, user, onOpenAuth, onQuickSearch, onRequestMeas
                       <div className="text-[11px] font-extrabold uppercase tracking-wider text-gray-400 px-3 py-1.5">
                         Select Garment Category
                       </div>
-                      {GARMENT_CATEGORIES.map((cat) => {
+                      {categories.map((cat) => {
                         const isSelected = selectedGarmentId === cat.id
                         return (
                           <button
@@ -511,7 +560,6 @@ export function HeroSection({ go, user, onOpenAuth, onQuickSearch, onRequestMeas
                       setShowAlterationPicker(!showAlterationPicker)
                       setShowGarmentPicker(false)
                       setShowCityPicker(false)
-                      setShowTimePicker(false)
                     }}
                     className={`relative z-0 flex items-center bg-[#F3F3F3] hover:bg-[#E8E8E8] rounded-[12px] px-3.5 py-3 border transition-all cursor-pointer select-none ${showAlterationPicker ? 'border-black bg-white shadow-sm' : 'border-transparent'
                       }`}
@@ -524,18 +572,18 @@ export function HeroSection({ go, user, onOpenAuth, onQuickSearch, onRequestMeas
                         What needs to be done?
                       </span>
                       <span className="block text-[15px] font-bold text-black truncate leading-tight">
-                        {selectedAlteration} {selectedServiceObj ? `($${selectedServiceObj.customerPrice})` : ''}
+                        {selectedAlteration || (selectedServiceObj ? selectedServiceObj.name : 'Select alteration')} {selectedServiceObj ? `($${selectedServiceObj.customerPrice})` : ''}
                       </span>
                     </div>
                     <ChevronDown size={18} className={`text-black shrink-0 transition-transform duration-200 ${showAlterationPicker ? 'rotate-180' : ''}`} />
                   </div>
 
-                  {showAlterationPicker && (
+                  {showAlterationPicker && currentCategory && (
                     <div className="absolute top-full left-0 right-0 z-50 mt-1.5 rounded-2xl bg-white border border-gray-200 shadow-2xl p-2 space-y-1 max-h-80 overflow-y-auto animate-in fade-in duration-150">
                       <div className="text-[11px] font-extrabold uppercase tracking-wider text-gray-400 px-3 py-1.5">
                         {currentCategory.name} Services
                       </div>
-                      {currentCategory.popularServices.map((svc) => {
+                      {currentCategory.popularServices?.map((svc) => {
                         const isSelected = selectedAlteration === svc.name
                         return (
                           <button
@@ -577,25 +625,32 @@ export function HeroSection({ go, user, onOpenAuth, onQuickSearch, onRequestMeas
 
             {/* 5. Square Product Image Upload Box Row */}
             <div className="relative mb-5">
-              <label className="block text-[10px] font-extrabold uppercase tracking-wider text-gray-500 mb-1.5">
-                Garment photo / reference fit <span className="text-gray-400 font-medium">(Optional)</span>
-              </label>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="block text-[10px] font-extrabold uppercase tracking-wider text-gray-500">
+                  Garment photo / reference fit <span className="text-gray-400 font-normal">(Optional)</span>
+                </label>
+                <span className="text-[10px] font-bold text-gray-500">
+                  {uploadedImages.length}/4 Photos
+                </span>
+              </div>
               <div className="flex items-center gap-3 overflow-x-auto py-1">
-                <div className="relative size-28 rounded-[16px] bg-[#F3F3F3] hover:bg-[#E8E8E8] border-2 border-dashed border-gray-400 hover:border-black flex flex-col items-center justify-center text-center p-2.5 transition-all cursor-pointer shrink-0 group">
-                  <input
-                    type="file"
-                    accept="image/*"
-                    multiple
-                    onChange={handleImageUpload}
-                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
-                    title="Upload garment photos"
-                  />
-                  <div className="size-9 rounded-full bg-black flex items-center justify-center text-white mb-1 group-hover:scale-105 transition-transform shrink-0">
-                    <Camera size={18} />
+                {uploadedImages.length < 4 && (
+                  <div className="relative size-28 rounded-[16px] bg-[#F3F3F3] hover:bg-[#E8E8E8] border-2 border-dashed border-gray-400 hover:border-black flex flex-col items-center justify-center text-center p-2.5 transition-all cursor-pointer shrink-0 group">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      onChange={handleImageUpload}
+                      className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                      title="Upload garment photos (Max 4)"
+                    />
+                    <div className="size-9 rounded-full bg-black flex items-center justify-center text-white mb-1 group-hover:scale-105 transition-transform shrink-0">
+                      <Camera size={18} />
+                    </div>
+                    <span className="text-xs font-bold text-black leading-tight">Add photo</span>
+                    <span className="text-[10px] text-gray-500 font-medium mt-0.5">JPG / PNG</span>
                   </div>
-                  <span className="text-xs font-bold text-black leading-tight">Add photo</span>
-                  <span className="text-[10px] text-gray-500 font-medium mt-0.5">JPG / PNG</span>
-                </div>
+                )}
 
                 {uploadedImages.map((imgUrl, idx) => (
                   <div key={idx} className="relative size-28 rounded-[16px] overflow-hidden border border-gray-300 shrink-0 group">

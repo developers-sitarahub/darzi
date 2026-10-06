@@ -14,20 +14,38 @@ model User {
   name       String
   email      String?  @unique
   contact    String?
-  phone      String?
+  phone      String?  @unique
   avatar     String?
   address    String?
   postcode   String?
-  method     String   @default("email") // google, email, mobile, apple, guest
-  role       String   @default("CUSTOMER") // CUSTOMER, STUDIO, ADMIN
+  method     String   @default("email") // google, email, mobile, apple
+  password   String?
+  role       String   @default("CUSTOMER") // CUSTOMER, TEMP_STUDIO, STUDIO, ADMIN
+  status     String   @default("ACTIVE") // ACTIVE, INACTIVE
   studioId   String?
   studioName String?
+  measurements String?
+  refreshToken String?
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
   orders Order[]
 
+  @@index([email])
+  @@index([phone])
   @@map("users")
+}
+
+model OtpVerification {
+  id        String   @id @default(cuid())
+  phone     String
+  code      String
+  expiresAt DateTime
+  verified  Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([phone])
+  @@map("otp_verifications")
 }
 
 model GarmentCategory {
@@ -58,17 +76,18 @@ model AlterationService {
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
 
+  @@index([categoryId])
   @@map("alteration_services")
 }
 
 model PartnerStore {
   id            String   @id
   name          String
+  email         String?
+  phone         String?
   area          String
   address       String
   postcode      String
-  distance      String?
-  distanceMiles Float    @default(0.5)
   rating        Float    @default(4.9)
   reviewCount   Int      @default(100)
   openingHours  String   @default("09:00 - 19:00")
@@ -80,11 +99,17 @@ model PartnerStore {
   retailSold    Boolean  @default(true)
   lat           Float
   lng           Float
+  distance      String?
+  distanceMiles Float?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
   orders Order[]
 
+  @@index([area])
+  @@index([postcode])
+  @@index([email])
+  @@index([phone])
   @@map("partner_stores")
 }
 
@@ -103,6 +128,7 @@ model Order {
   storeId               String?
   store                 PartnerStore? @relation(fields: [storeId], references: [id], onDelete: SetNull)
   storeName             String?
+  storePhone            String?
   date                  String
   timeSlot              String
   garmentBrand          String?
@@ -125,11 +151,36 @@ model Order {
   slaStartedAt          DateTime?
   rating                Float?
   ratingFeedback        String?
+  customerLat           Float?
+  customerLng           Float?
+  tailorLat             Float?
+  tailorLng             Float?
   status                String        @default("Allocated") // Allocated, Accepted, Customer Arrived, Fitting Completed, Work in Progress, Ready, Collected, Closed
   price                 Float
   otp                   String
+  otpExpiresAt          DateTime?
   createdAt             DateTime      @default(now())
   updatedAt             DateTime      @updatedAt
 
+  @@index([userId])
+  @@index([customerEmail])
+  @@index([customerPhone])
+  @@index([storeId])
+  @@index([status])
   @@map("orders")
 }
+
+model NewsletterSubscription {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  status    String   @default("ACTIVE") // ACTIVE, UNSUBSCRIBED
+  source    String   @default("footer")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([email])
+  @@index([status])
+  @@map("newsletter_subscriptions")
+}
+
+

@@ -1,5 +1,6 @@
 @import 'tailwindcss';
 
+
 @theme {
   --font-serif: var(--font-sans), 'Inter', -apple-system, BlinkMacSystemFont, 'Uber Move', 'Segoe UI', Roboto, sans-serif;
   --font-sans: var(--font-sans), 'Inter', -apple-system, BlinkMacSystemFont, 'Uber Move Text', 'Segoe UI', Roboto, sans-serif;

@@ -1,14 +1,16 @@
 export type Screen =
   | 'home'
+  | 'book'
   | 'how-it-works'
   | 'about'
   | 'for-partners'
-  | 'booking'
   | 'orders'
   | 'partner'
-  | 'admin'
-  | 'confirm-measurement'
   | 'order'
+  | 'profile'
+  | 'contact'
+  | 'support'
+  | 'privacy'
 
 export type GarmentCategory = {
   id: string
@@ -34,14 +36,16 @@ export type User = {
   id?: string
   name: string
   contact: string
-  email?: string
-  avatar?: string
-  address?: string
-  postcode?: string
-  method: 'google' | 'apple' | 'email' | 'mobile' | 'guest'
-  role?: 'CUSTOMER' | 'STUDIO' | 'ADMIN'
-  studioId?: string
-  studioName?: string
+  email?: string | null
+  phone?: string | null
+  avatar?: string | null
+  address?: string | null
+  postcode?: string | null
+  method: 'google' | 'apple' | 'email' | 'mobile'
+  role?: 'CUSTOMER' | 'TEMP_STUDIO' | 'STUDIO' | 'ADMIN'
+  status?: 'ACTIVE' | 'INACTIVE'
+  studioId?: string | null
+  studioName?: string | null
 }
 
 export type StoreOption = {
@@ -50,6 +54,8 @@ export type StoreOption = {
   area: string
   address: string
   postcode: string
+  phone?: string
+  email?: string
   distance: string
   distanceMiles: number
   rating: number
@@ -62,6 +68,7 @@ export type StoreOption = {
   specialties: string[]
   retailSold: boolean
   coords: { lat: number; lng: number }
+  image?: string
 }
 
 export type OrderStatus =
@@ -73,6 +80,7 @@ export type OrderStatus =
   | 'Ready'
   | 'Collected'
   | 'Closed'
+  | 'Cancelled'
 
 export type FittingBooking = {
   id: string
@@ -88,6 +96,8 @@ export type FittingBooking = {
   storeId: string
   storeName?: string
   storeAddress?: string
+  storePhone?: string
+  store?: StoreOption
   city?: string
   date: string
   timeSlot: string
@@ -125,469 +135,39 @@ export type FittingBooking = {
   status: OrderStatus
   price: number
   otp: string
+  pickupOtpGenerated?: boolean
   createdAt?: string
 }
 
-// 7 Categories strictly matching US Tailor Market Benchmark Rates & Tech Brief
-export const GARMENT_CATEGORIES: GarmentCategory[] = [
-  {
-    id: 'trousers',
-    name: 'Trousers & Jeans',
-    tagline: 'Precision hem lengths, waist shaping, and leg tapers',
-    startingPrice: 20,
-    avgTurnaround: '48 hours',
-    popularServices: [
-      {
-        id: 'trouser-hem-plain',
-        name: 'Shorten Hem (Plain)',
-        description: 'Clean classic hem adjustment measured to your exact break preference',
-        customerPrice: 20,
-        partnerPayout: 15,
-        platformFee: 5,
-        turnaroundDays: 2,
-        popular: true,
-      },
-      {
-        id: 'trouser-hem-original',
-        name: 'Shorten with Original Jean Hem',
-        description: 'Preserves the distressed factory wash and chainstitch on denim',
-        customerPrice: 28,
-        partnerPayout: 21,
-        platformFee: 7,
-        turnaroundDays: 2,
-        popular: true,
-      },
-      {
-        id: 'trouser-waist',
-        name: 'Take In / Let Out Waist',
-        description: 'Reshape waistband through the rear rise for a gap-free fit',
-        customerPrice: 32,
-        partnerPayout: 24,
-        platformFee: 8,
-        turnaroundDays: 2,
-      },
-      {
-        id: 'trouser-taper',
-        name: 'Taper Trouser Legs',
-        description: 'Slimming from knee to ankle for a modern tailored silhouette',
-        customerPrice: 35,
-        partnerPayout: 26,
-        platformFee: 9,
-        turnaroundDays: 2,
-      },
-      {
-        id: 'trouser-zip',
-        name: 'Replace Zip / Fly Repair',
-        description: 'New durable heavy-duty YKK metal or nylon zipper installation',
-        customerPrice: 24,
-        partnerPayout: 18,
-        platformFee: 6,
-        turnaroundDays: 2,
-      },
-    ],
-  },
-  {
-    id: 'shirts',
-    name: 'Shirts & Tops',
-    tagline: 'Streamlined torsos, shortened sleeves, and collar adjustments',
-    startingPrice: 22,
-    avgTurnaround: '48 hours',
-    popularServices: [
-      {
-        id: 'shirt-sleeves',
-        name: 'Shorten Sleeves with Placket Reset',
-        description: 'Carefully moves up cuff and gauntlet buttons cleanly',
-        customerPrice: 28,
-        partnerPayout: 21,
-        platformFee: 7,
-        turnaroundDays: 2,
-        popular: true,
-      },
-      {
-        id: 'shirt-sides',
-        name: 'Take In Sides & Back Darts',
-        description: 'Eliminates excess ballooning fabric around the waist and torso',
-        customerPrice: 26,
-        partnerPayout: 19,
-        platformFee: 7,
-        turnaroundDays: 2,
-        popular: true,
-      },
-      {
-        id: 'shirt-hem',
-        name: 'Shorten Shirt Hem',
-        description: 'Shorten for untucked casual wear or cleaner tucked profile',
-        customerPrice: 22,
-        partnerPayout: 16,
-        platformFee: 6,
-        turnaroundDays: 2,
-      },
-    ],
-  },
-  {
-    id: 'dresses',
-    name: 'Dresses & Gowns',
-    tagline: 'Bespoke hem tiers, bodice tapering, and strap adjustments',
-    startingPrice: 24,
-    avgTurnaround: '48 hours',
-    popularServices: [
-      {
-        id: 'dress-hem-simple',
-        name: 'Shorten Dress Hem (Single Layer)',
-        description: 'Clean line hemming for midi, maxi, and day dresses',
-        customerPrice: 38,
-        partnerPayout: 28,
-        platformFee: 10,
-        turnaroundDays: 2,
-        popular: true,
-      },
-      {
-        id: 'dress-straps',
-        name: 'Shorten Shoulders & Straps',
-        description: 'Lifts neckline to fit bust proportions flawlessly',
-        customerPrice: 24,
-        partnerPayout: 18,
-        platformFee: 6,
-        turnaroundDays: 2,
-        popular: true,
-      },
-      {
-        id: 'dress-bodice',
-        name: 'Take In Bodice / Bust Contouring',
-        description: 'Reshape side seams and waist seam for sculpted silhouette',
-        customerPrice: 48,
-        partnerPayout: 36,
-        platformFee: 12,
-        turnaroundDays: 2,
-      },
-      {
-        id: 'dress-zipper',
-        name: 'Invisible Zip Replacement',
-        description: 'Smooth seamless zipper installation with hook & eye',
-        customerPrice: 30,
-        partnerPayout: 22,
-        platformFee: 8,
-        turnaroundDays: 2,
-      },
-    ],
-  },
-  {
-    id: 'skirts',
-    name: 'Skirts',
-    tagline: 'Hem reshaping, waist cinching, and vent repairs',
-    startingPrice: 24,
-    avgTurnaround: '48 hours',
-    popularServices: [
-      {
-        id: 'skirt-hem',
-        name: 'Shorten Skirt Hem',
-        description: 'Precise line hemming with blind stitch or topstitch',
-        customerPrice: 24,
-        partnerPayout: 18,
-        platformFee: 6,
-        turnaroundDays: 2,
-        popular: true,
-      },
-      {
-        id: 'skirt-waist',
-        name: 'Take In Skirt Waistband',
-        description: 'Eliminates gap at the waistband while keeping hip line smooth',
-        customerPrice: 28,
-        partnerPayout: 21,
-        platformFee: 7,
-        turnaroundDays: 2,
-      },
-    ],
-  },
-  {
-    id: 'jackets',
-    name: 'Jackets & Blazers',
-    tagline: 'Shoulder realignment, sleeve tailoring, and side intake',
-    startingPrice: 45,
-    avgTurnaround: '48 hours',
-    popularServices: [
-      {
-        id: 'jacket-sleeves',
-        name: 'Shorten Blazer Sleeves (from Cuff)',
-        description: 'Relocates buttons and functional buttonholes with precision',
-        customerPrice: 45,
-        partnerPayout: 34,
-        platformFee: 11,
-        turnaroundDays: 2,
-        popular: true,
-      },
-      {
-        id: 'jacket-sides',
-        name: 'Take In Blazer Sides / Waist Suppression',
-        description: 'Creates a sculpted silhouette through torso back seams',
-        customerPrice: 55,
-        partnerPayout: 41,
-        platformFee: 14,
-        turnaroundDays: 2,
-        popular: true,
-      },
-      {
-        id: 'jacket-collar',
-        name: 'Lower / Reset Collar Roll',
-        description: 'Fixes collar gap or rolls behind the neck',
-        customerPrice: 50,
-        partnerPayout: 38,
-        platformFee: 12,
-        turnaroundDays: 3,
-      },
-    ],
-  },
-  {
-    id: 'suits',
-    name: 'Suits & Formalwear',
-    tagline: 'Complete 2-piece and 3-piece tailored fit packages',
-    startingPrice: 68,
-    avgTurnaround: '48-72 hours',
-    popularServices: [
-      {
-        id: 'suit-complete-package',
-        name: 'Full 2-Piece Suit Fit Overhaul',
-        description: 'Includes trouser hem, waist, jacket sleeves, and side suppression',
-        customerPrice: 110,
-        partnerPayout: 85,
-        platformFee: 25,
-        turnaroundDays: 3,
-        popular: true,
-      },
-      {
-        id: 'suit-trousers-and-sleeves',
-        name: 'Trouser Hem + Jacket Sleeves Duo',
-        description: 'The standard essentials package for newly purchased suits',
-        customerPrice: 68,
-        partnerPayout: 52,
-        platformFee: 16,
-        turnaroundDays: 2,
-        popular: true,
-      },
-    ],
-  },
-  {
-    id: 'occasion',
-    name: 'Ethnic & Occasion Wear',
-    tagline: 'Intricate embroidery hemming, blouse darts, and delicate silk fits',
-    startingPrice: 38,
-    avgTurnaround: '48-72 hours',
-    popularServices: [
-      {
-        id: 'occasion-blouse-fit',
-        name: 'Blouse / Kurti Fit & Side Darts',
-        description: 'Adjusted with margin preservation and custom bust contouring',
-        customerPrice: 38,
-        partnerPayout: 29,
-        platformFee: 9,
-        turnaroundDays: 2,
-        popular: true,
-      },
-      {
-        id: 'occasion-lehenga-hem',
-        name: 'Lehenga / Gown Hem with Border Reset',
-        description: 'Careful removal and re-application of heavy embellished borders',
-        customerPrice: 75,
-        partnerPayout: 58,
-        platformFee: 17,
-        turnaroundDays: 3,
-        popular: true,
-      },
-    ],
-  },
-]
+// Garment categories are fetched dynamically from the database via /api/services
+export const GARMENT_CATEGORIES: GarmentCategory[] = []
 
-// Verified Real-World Global Partner Tailor Shops
-export const PARTNER_STORES: StoreOption[] = [
-  // --- Vasai & Mumbai Region (Real Tailors) ---
-  {
-    id: 'a1-tailors-vasai',
-    name: 'New A-1 Tailor',
-    area: 'Manickpur, Vasai West',
-    address: 'Station Road, Manickpur, Vasai West, Vasai-Virar, Maharashtra 401202',
-    postcode: '401202',
-    distance: '0.3 mi away',
-    distanceMiles: 0.3,
-    rating: 4.98,
-    reviewCount: 384,
-    openingHours: 'Mon–Sat: 09:30 – 21:00',
-    dailyCapacity: 35,
-    machines: 8,
-    workers: 5,
-    leadTailor: 'Master Tailor Ramesh',
-    specialties: ['Trouser Hemming', 'Suit Alterations', 'Shirt Tailoring'],
-    retailSold: true,
-    coords: { lat: 19.3705, lng: 72.8228 },
-  },
-  {
-    id: 'mansi-tailoring-vasai',
-    name: 'Mansi Tailoring Studio',
-    area: 'Stella, Navghar, Vasai West',
-    address: 'Navghar Road, Stella, Vasai West, Maharashtra 401202',
-    postcode: '401202',
-    distance: '0.6 mi away',
-    distanceMiles: 0.6,
-    rating: 4.94,
-    reviewCount: 210,
-    openingHours: 'Mon–Sat: 10:00 – 20:00',
-    dailyCapacity: 30,
-    machines: 6,
-    workers: 4,
-    leadTailor: 'Mansi Master Tailor',
-    specialties: ['Blouse & Dress Restructuring', 'In-Studio Pinning', 'Custom Hemming'],
-    retailSold: false,
-    coords: { lat: 19.3664, lng: 72.8185 },
-  },
-  {
-    id: 'bandra-master-tailors',
-    name: 'Bandra Master Tailors',
-    area: 'Hill Road, Bandra West',
-    address: '24 Hill Road, Bandra West, Mumbai, Maharashtra 400050',
-    postcode: '400050',
-    distance: '0.9 mi away',
-    distanceMiles: 0.9,
-    rating: 4.96,
-    reviewCount: 512,
-    openingHours: 'Mon–Sat: 10:00 – 21:00',
-    dailyCapacity: 45,
-    machines: 12,
-    workers: 8,
-    leadTailor: 'Master Marco & Sunil',
-    specialties: ['Designer Alterations', 'Occasion & Suit Fitting', 'Denim Hemming'],
-    retailSold: true,
-    coords: { lat: 19.0544, lng: 72.8315 },
-  },
+export const PARTNER_STORES: StoreOption[] = []
 
-  // --- New York Region (Real Tailors) ---
-  {
-    id: 'alteration-specialists-soho',
-    name: 'Alteration Specialists SoHo',
-    area: 'Broome St, SoHo',
-    address: '450 Broome Street, New York, NY 10013',
-    postcode: '10013',
-    distance: '0.4 mi away',
-    distanceMiles: 0.4,
-    rating: 4.97,
-    reviewCount: 420,
-    openingHours: 'Mon–Sat: 09:00 – 19:00',
-    dailyCapacity: 35,
-    machines: 8,
-    workers: 5,
-    leadTailor: 'Marco Rossi (Master Tailor)',
-    specialties: ['Denim Chainstitch', 'Suit Tailoring', 'Silk & Eveningwear'],
-    retailSold: true,
-    coords: { lat: 40.7226, lng: -74.0010 },
-  },
-  {
-    id: 'best-tailor-nyc',
-    name: 'Best Tailor NYC',
-    area: 'Lexington Ave, Upper East Side',
-    address: '1024 Lexington Avenue, New York, NY 10021',
-    postcode: '10021',
-    distance: '1.2 mi away',
-    distanceMiles: 1.2,
-    rating: 4.92,
-    reviewCount: 290,
-    openingHours: 'Mon–Sun: 10:00 – 19:00',
-    dailyCapacity: 30,
-    machines: 8,
-    workers: 5,
-    leadTailor: 'Arthur Pendelton',
-    specialties: ['24h Express Hemming', 'Trousers & Jeans', 'Zip Replacements'],
-    retailSold: false,
-    coords: { lat: 40.7716, lng: -73.9616 },
-  },
+/** Calculate real-time distance in miles between two coordinates using Haversine formula */
+export function getDistanceInMiles(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 3958.8 // Radius of earth in miles
+  const dLat = ((lat2 - lat1) * Math.PI) / 180
+  const dLon = ((lon2 - lon1) * Math.PI) / 180
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2)
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+  return Number((R * c).toFixed(2))
+}
 
-  // --- London Region (Real Tailors) ---
-  {
-    id: 'kensington-tailors-uk',
-    name: 'Kensington Tailors London',
-    area: 'Kensington Church St, London',
-    address: '18 Kensington Church Street, London W8 4EP, UK',
-    postcode: 'W8 4EP',
-    distance: '0.3 mi away',
-    distanceMiles: 0.3,
-    rating: 4.98,
-    reviewCount: 390,
-    openingHours: 'Mon–Sat: 09:00 – 19:00',
-    dailyCapacity: 30,
-    machines: 8,
-    workers: 5,
-    leadTailor: 'Master Marco',
-    specialties: ['Precision Hemming', 'Bespoke Suit Alterations', 'Dresses & Skirts'],
-    retailSold: true,
-    coords: { lat: 51.5033, lng: -0.1925 },
-  },
-  {
-    id: 'gieves-hawkes-london',
-    name: 'Gieves & Hawkes Savile Row',
-    area: 'Savile Row, Mayfair, London',
-    address: '1 Savile Row, Mayfair, London W1S 3JR, UK',
-    postcode: 'W1S 3JR',
-    distance: '0.9 mi away',
-    distanceMiles: 0.9,
-    rating: 4.99,
-    reviewCount: 610,
-    openingHours: 'Mon–Sat: 09:30 – 18:30',
-    dailyCapacity: 45,
-    machines: 12,
-    workers: 8,
-    leadTailor: 'Sir Edward Sterling',
-    specialties: ['Savile Row Suiting', 'Evening Gowns', 'Coat Restructuring'],
-    retailSold: true,
-    coords: { lat: 51.5118, lng: -0.1408 },
-  },
-
-  // --- Los Angeles Region (Real Tailors) ---
-  {
-    id: 'beverly-hills-custom-tailors',
-    name: 'Beverly Hills Custom Tailors',
-    area: 'Brighton Way, Beverly Hills',
-    address: '9410 Brighton Way, Beverly Hills, CA 90210',
-    postcode: '90210',
-    distance: '0.8 mi away',
-    distanceMiles: 0.8,
-    rating: 4.98,
-    reviewCount: 450,
-    openingHours: 'Mon–Sat: 09:30 – 18:30',
-    dailyCapacity: 30,
-    machines: 8,
-    workers: 5,
-    leadTailor: 'Elena Vance (Master Seamstress)',
-    specialties: ['Dresses & Gowns', 'Blazer Structuring', 'Red Carpet Fits'],
-    retailSold: true,
-    coords: { lat: 34.0689, lng: -118.4014 },
-  },
-]
+/** Returns partner tailor studios near the requested location */
+export function getStoresForLocation(location?: string, customStores?: StoreOption[]): StoreOption[] {
+  return customStores && customStores.length > 0 ? customStores : []
+}
 
 /** Automatically finds and assigns the closest partner tailor studio for the user's location */
-export function getClosestStoreForLocation(location?: string): StoreOption {
-  if (!location) return PARTNER_STORES[0]
-  
-  const query = location.toLowerCase().trim()
-  
-  // Filter stores matching city/area keywords
-  const matches = PARTNER_STORES.filter((st) => {
-    const combined = `${st.name} ${st.area} ${st.address} ${st.postcode}`.toLowerCase()
-    
-    if ((query.includes('vasai') || query.includes('manickpur') || query.includes('virar')) && (combined.includes('vasai') || combined.includes('manickpur') || st.id.includes('vasai'))) return true
-    if ((query.includes('mumbai') || query.includes('in-mh') || query.includes('mh')) && (combined.includes('mumbai') || combined.includes('vasai') || combined.includes('bandra') || combined.includes('colaba'))) return true
-    if ((query.includes('london') || query.includes('uk')) && (combined.includes('london') || combined.includes('kensington') || combined.includes('mayfair') || combined.includes('savile'))) return true
-    if ((query.includes('los angeles') || query.includes('beverly') || query.includes('ca')) && combined.includes('beverly')) return true
-    if ((query.includes('new york') || query.includes('soho') || query.includes('ny')) && (combined.includes('soho') || combined.includes('broome') || combined.includes('lexington'))) return true
-
-    return combined.includes(query) || query.includes(st.area.toLowerCase())
-  })
-
-  if (matches.length > 0) {
-    // Sort by distanceMiles ascending to automatically pick the closest tailor studio
-    matches.sort((a, b) => a.distanceMiles - b.distanceMiles)
-    return matches[0]
-  }
-
-  // Fallback: Pick store with minimum distance
-  const sorted = [...PARTNER_STORES].sort((a, b) => a.distanceMiles - b.distanceMiles)
-  return sorted[0]
+export function getClosestStoreForLocation(location?: string, customStores?: StoreOption[]): StoreOption | null {
+  if (!customStores || customStores.length === 0) return null
+  return customStores[0] || null
 }
 
 export const TESTIMONIALS = [
@@ -639,7 +219,7 @@ export const FAQS = [
   },
   {
     q: 'How does pricing work?',
-    a: 'All prices on Darzi are completely transparent and standardized. You pay securely online at booking, with zero hidden studio surcharges or surprise fees.',
+    a: 'All prices on Darzi are standardized to real-world workshop rates in US Dollars ($). You pay the standard rate directly to the partner studio at pickup, with zero platform fees and zero markups.',
   },
 ]
 
@@ -653,4 +233,75 @@ export function formatClock(totalSeconds: number) {
   const m = Math.floor((s % 3600) / 60)
   const sec = s % 60
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`
+}
+
+export function getDefaultGarmentImage(garmentNameOrId?: string, serviceName?: string): string {
+  const str = `${garmentNameOrId || ''} ${serviceName || ''}`.toLowerCase()
+  if (str.includes('shirt') || str.includes('blouse') || str.includes('top') || str.includes('tee') || str.includes('polo') || str.includes('cuff') || str.includes('collar')) {
+    return '/images/service_shirt.jpg'
+  }
+  if (str.includes('dress') || str.includes('gown') || str.includes('jumpsuit') || str.includes('skirt') || str.includes('slit')) {
+    return '/images/service_dress.jpg'
+  }
+  if (str.includes('jacket') || str.includes('coat') || str.includes('outerwear') || str.includes('blouson') || str.includes('zipper') || str.includes('lining')) {
+    return '/images/service_jacket.jpg'
+  }
+  if (str.includes('suit') || str.includes('blazer') || str.includes('tux') || str.includes('tuxedo')) {
+    return '/images/service_suit.jpg'
+  }
+  if (str.includes('ethnic') || str.includes('sherwani') || str.includes('lehenga') || str.includes('kurta') || str.includes('saree') || str.includes('occasion') || str.includes('bridal') || str.includes('embroidery')) {
+    return '/images/service_ethnic.jpg'
+  }
+  if (str.includes('trouser') || str.includes('jean') || str.includes('pant') || str.includes('chino') || str.includes('denim') || str.includes('hem') || str.includes('inseam') || str.includes('waist')) {
+    return '/images/service_trousers.jpg'
+  }
+  return '/images/service_trousers.jpg'
+}
+
+export function getGarmentPhoto(order?: Partial<FittingBooking> | { intakePhotoUrl?: string; imageUrl?: string; garmentName?: string; garmentId?: string; serviceName?: string } | null): string | null {
+  if (!order) return null
+  const photo = order.intakePhotoUrl || (order as any)?.imageUrl
+  if (photo && typeof photo === 'string') {
+    const trimmed = photo.trim()
+    if (trimmed.startsWith('http') || trimmed.startsWith('data:') || trimmed.startsWith('/') || trimmed.startsWith('/uploads')) return trimmed
+    if (trimmed.startsWith('[')) {
+      try {
+        const parsed = JSON.parse(trimmed)
+        if (Array.isArray(parsed) && parsed.length > 0 && typeof parsed[0] === 'string') {
+          const first = parsed[0].trim()
+          if (first.startsWith('http') || first.startsWith('data:') || first.startsWith('/') || first.startsWith('/uploads')) {
+            return first
+          }
+        }
+      } catch {}
+    }
+  }
+  return null
+}
+
+export function getAllGarmentPhotos(order?: Partial<FittingBooking> | null): string[] {
+  if (!order) return []
+  const raw = order.intakePhotoUrl || (order as any)?.imageUrl || (order as any)?.images
+  let photos: string[] = []
+
+  if (Array.isArray(raw)) {
+    photos = raw.filter((p) => typeof p === 'string' && (p.startsWith('http') || p.startsWith('data:') || p.startsWith('/') || p.startsWith('/uploads')))
+  } else if (typeof raw === 'string') {
+    if (raw.startsWith('[')) {
+      try {
+        const parsed = JSON.parse(raw)
+        if (Array.isArray(parsed)) {
+          photos = parsed.filter((p) => typeof p === 'string' && (p.startsWith('http') || p.startsWith('data:') || p.startsWith('/') || p.startsWith('/uploads')))
+        }
+      } catch {}
+    }
+    if (photos.length === 0 && raw.includes('||')) {
+      photos = raw.split('||').map((s) => s.trim()).filter((p) => p.startsWith('http') || p.startsWith('data:') || p.startsWith('/') || p.startsWith('/uploads'))
+    }
+    if (photos.length === 0 && (raw.startsWith('http') || raw.startsWith('data:') || raw.startsWith('/') || raw.startsWith('/uploads'))) {
+      photos = [raw]
+    }
+  }
+
+  return photos
 }
