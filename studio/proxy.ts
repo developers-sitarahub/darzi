@@ -2,15 +2,7 @@ import { NextResponse, type NextRequest } from 'next/server'
 
 const CUSTOMER_SITE_URL = process.env.NEXT_PUBLIC_CUSTOMER_SITE_URL || process.env.CUSTOMER_SITE_URL || ''
 
-interface JwtPayload {
-  id?: string
-  email?: string
-  role?: string
-  type?: string
-  [key: string]: unknown
-}
-
-function decodeJwtPayload<T = JwtPayload>(token: string | null | undefined): T | null {
+function decodeJwtPayload<T = any>(token: string | null | undefined): T | null {
   if (!token || typeof token !== 'string') return null
   try {
     const parts = token.split('.')
@@ -46,19 +38,24 @@ export function proxy(request: NextRequest) {
     return NextResponse.next()
   }
 
-  // 2. Allow super-admin routes & Auth callbacks
-  if (pathname.startsWith('/admin') || pathname.startsWith('/auth/callback')) {
+  // 2. Allow super-admin routes
+  if (pathname.startsWith('/admin')) {
     return NextResponse.next()
   }
 
-  // 3. If URL contains single-use auth code or token, forward to /auth/callback
+  // 3. Allow OAuth exchange callback route
+  if (pathname.startsWith('/auth/callback')) {
+    return NextResponse.next()
+  }
+
+  // 4. If URL has single-use auth code or token, forward to /auth/callback
   if (searchParams.has('code') || searchParams.has('token')) {
     const callbackUrl = new URL('/auth/callback', request.url)
     callbackUrl.search = request.nextUrl.search
     return NextResponse.redirect(callbackUrl)
   }
 
-  // 4. Extract tokens from cookies
+  // 5. Check authentication & role from JWT token (Access Token or Refresh Token)
   const token = request.cookies.get('tg_token')?.value || request.cookies.get('token')?.value
   const refreshToken = request.cookies.get('tg_refresh_token')?.value || request.cookies.get('refreshToken')?.value
   const hasAnyToken = Boolean(token || refreshToken)
@@ -71,7 +68,7 @@ export function proxy(request: NextRequest) {
     pathname.startsWith('/profile') ||
     pathname.startsWith('/settings')
 
-  // Unauthenticated guests attempting to access protected workbench routes
+  // Unauthenticated guests accessing protected workbench routes get redirected to login/onboarding
   if (!hasAnyToken) {
     if (isWorkbenchRoute) {
       return NextResponse.redirect(new URL('/?auth=required', request.url))
@@ -79,14 +76,11 @@ export function proxy(request: NextRequest) {
     return NextResponse.next()
   }
 
-  // 5. Decode role from Access or Refresh Token payload
+  // Extract role directly from token payload as primary source of truth
   const tokenPayload = decodeJwtPayload(token) || decodeJwtPayload(refreshToken)
-  const role =
-    tokenPayload?.role ||
-    request.cookies.get('tg_user_role')?.value ||
-    (tokenPayload?.type === 'pending_google_signup' ? 'TEMP_STUDIO' : 'STUDIO')
+  let role = tokenPayload?.role || request.cookies.get('tg_user_role')?.value || (tokenPayload?.type === 'pending_google_signup' ? 'TEMP_STUDIO' : 'STUDIO')
 
-  // Customer users visiting workbench are redirected to customer site or auth prompt
+  // Unauthenticated or Customer users visiting workbench are redirected
   if (role === 'CUSTOMER') {
     if (isWorkbenchRoute) {
       if (CUSTOMER_SITE_URL) {
@@ -105,7 +99,7 @@ export function proxy(request: NextRequest) {
     return NextResponse.next()
   }
 
-  // Active STUDIO / ADMIN partner: redirect landing page '/' to '/dashboard' unless ?step query exists
+  // Active STUDIO / ADMIN partner: redirect root to /dashboard unless ?step is present
   if (role === 'STUDIO' || role === 'ADMIN') {
     if (pathname === '/' && !searchParams.has('step')) {
       return NextResponse.redirect(new URL('/dashboard', request.url))
