@@ -1889,6 +1889,7 @@ router.get('/me', async (req, res) => {
 
     return res.json({
       user: enrichedUser,
+      role: user.role,
       hasPhone: Boolean(user.phone),
     });
   } catch (err) {
