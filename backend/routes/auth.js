@@ -662,15 +662,18 @@ router.post('/verify-otp', async (req, res) => {
         } else {
           user = existingUser;
           if (existingUser.role === 'TEMP_STUDIO' || (existingUser.role === 'STUDIO' && (existingUser.status === 'INACTIVE' || !existingUser.studioName))) {
-            const tempToken = generateToken(existingUser);
-            const tempAuthCode = createAuthCode(existingUser, tempToken);
+            const tempTokens = await generateTokens(existingUser);
+            const tempAuthCode = createAuthCode(existingUser, tempTokens.accessToken);
+            setAuthCookies(res, tempTokens);
             return res.json({
               success: true,
               isNewUser: true,
               phone: cleanPhone,
               user: existingUser,
               role: 'TEMP_STUDIO',
-              token: tempToken,
+              token: tempTokens.accessToken,
+              accessToken: tempTokens.accessToken,
+              refreshToken: tempTokens.refreshToken,
               authCode: tempAuthCode,
               message: 'Mobile number verified. Please complete your studio registration.',
             });
@@ -689,15 +692,18 @@ router.post('/verify-otp', async (req, res) => {
             status: 'INACTIVE',
           });
 
-          const tempToken = generateToken(user);
-          const tempAuthCode = createAuthCode(user, tempToken);
+          const tempTokens = await generateTokens(user);
+          const tempAuthCode = createAuthCode(user, tempTokens.accessToken);
+          setAuthCookies(res, tempTokens);
           return res.json({
             success: true,
             isNewUser: true,
             phone: cleanPhone,
             user,
             role: 'TEMP_STUDIO',
-            token: tempToken,
+            token: tempTokens.accessToken,
+            accessToken: tempTokens.accessToken,
+            refreshToken: tempTokens.refreshToken,
             authCode: tempAuthCode,
             message: 'Mobile number verified. Please complete your studio registration.',
           });

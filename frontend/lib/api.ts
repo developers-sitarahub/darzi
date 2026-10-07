@@ -9,6 +9,7 @@ import {
   setAuthRole,
   clearAllAuth,
   clearUnnecessaryDataOnLogin,
+  decodeJwtPayload,
 } from './cookies'
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || ''
@@ -25,13 +26,17 @@ export function clearAuthCookies() {
 let isRefreshing = false
 let refreshPromise: Promise<string | null> | null = null
 
-export async function refreshAccessToken(): Promise<string | null> {
-  const refreshToken = getRefreshToken()
+export async function refreshAccessToken(providedRefreshToken?: string): Promise<string | null> {
+  const refreshToken = providedRefreshToken || getRefreshToken()
   if (!refreshToken) {
     return null
   }
 
-  if (isRefreshing && refreshPromise) {
+  if (providedRefreshToken) {
+    setRefreshToken(providedRefreshToken)
+  }
+
+  if (isRefreshing && refreshPromise && !providedRefreshToken) {
     return refreshPromise
   }
 
@@ -40,6 +45,7 @@ export async function refreshAccessToken(): Promise<string | null> {
     try {
       const res = await fetch(`${API_BASE}/auth/refresh`, {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ refreshToken }),
       })
@@ -139,15 +145,25 @@ export const STUDIO_BASE_URL =
   process.env.STUDIO_URL ||
   ''
 
-export function getStudioUrl(path: string = '', tokenOrCode?: string | null): string {
+export function getStudioUrl(path: string = '', tokenOrCodeOrRt?: string | null): string {
   const base = STUDIO_BASE_URL.replace(/\/$/, '')
   const cleanPath = path ? (path.startsWith('/') ? path : `/${path}`) : ''
   const url = `${base}${cleanPath}`
   
-  if (tokenOrCode) {
+  if (tokenOrCodeOrRt) {
     const separator = url.includes('?') ? '&' : '?'
-    const paramName = tokenOrCode.startsWith('ac_') ? 'code' : 'token'
-    return `${url}${separator}${paramName}=${encodeURIComponent(tokenOrCode)}`
+    let paramName = 'refreshToken'
+    if (tokenOrCodeOrRt.startsWith('ac_')) {
+      paramName = 'code'
+    } else {
+      const decoded = decodeJwtPayload(tokenOrCodeOrRt)
+      if (decoded?.tokenType === 'access') {
+        paramName = 'token'
+      } else {
+        paramName = 'refreshToken'
+      }
+    }
+    return `${url}${separator}${paramName}=${encodeURIComponent(tokenOrCodeOrRt)}`
   }
   return url
 }
