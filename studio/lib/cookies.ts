@@ -44,16 +44,14 @@ export function setCookie(
   const maxAge = days * 24 * 60 * 60
   const encodedValue = encodeURIComponent(value)
   const isHttps = typeof window !== 'undefined' && window.location.protocol === 'https:'
-  const secureFlag = (isHttps && sameSite === 'None') || (isHttps && process.env.NODE_ENV === 'production') ? '; Secure' : ''
+  const secureFlag = isHttps ? '; Secure' : ''
   const parentDomain = getParentCookieDomain()
 
-  // 1. Host-only cookie
-  let cookieString = `${encodeURIComponent(name)}=${encodedValue}; path=${path}; max-age=${maxAge}; SameSite=${sameSite}${secureFlag}`
-  document.cookie = cookieString
-
-  // 2. Parent-domain shared cookie (e.g. .darzi.com) so user and studio portals share auth across subdomains
+  // Only set with parentDomain if available so cookies are shared and cleanly cleared cross-subdomain
   if (parentDomain) {
     document.cookie = `${encodeURIComponent(name)}=${encodedValue}; domain=${parentDomain}; path=${path}; max-age=${maxAge}; SameSite=${sameSite}${secureFlag}`
+  } else {
+    document.cookie = `${encodeURIComponent(name)}=${encodedValue}; path=${path}; max-age=${maxAge}; SameSite=${sameSite}${secureFlag}`
   }
 }
 
@@ -67,6 +65,8 @@ export function deleteCookie(name: string, path: string = '/'): void {
   const hostParts = hostname ? hostname.split('.') : []
   const parentDomain = hostParts.length > 1 ? `.${hostParts.slice(-2).join('.')}` : ''
   const rawParentDomain = hostParts.length > 1 ? hostParts.slice(-2).join('.') : ''
+  const isHttps = typeof window !== 'undefined' && window.location.protocol === 'https:'
+  const secureFlag = isHttps ? '; Secure' : ''
 
   const domainVariants = [
     '',
@@ -80,18 +80,18 @@ export function deleteCookie(name: string, path: string = '/'): void {
   for (const p of paths) {
     const pathAttr = p ? `; path=${p}` : ''
     // Host-only deletions
-    document.cookie = `${encodedName}=${pathAttr}; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax`
-    document.cookie = `${encodedName}=${pathAttr}; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Strict`
+    document.cookie = `${encodedName}=${pathAttr}; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax${secureFlag}`
+    document.cookie = `${encodedName}=${pathAttr}; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Strict${secureFlag}`
     document.cookie = `${encodedName}=${pathAttr}; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=None; Secure`
-    document.cookie = `${rawName}=${pathAttr}; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax`
+    document.cookie = `${rawName}=${pathAttr}; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax${secureFlag}`
 
     // Domain variations
     for (const d of domainVariants) {
       if (d) {
-        document.cookie = `${encodedName}=${pathAttr}; domain=${d}; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax`
-        document.cookie = `${encodedName}=${pathAttr}; domain=${d}; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Strict`
+        document.cookie = `${encodedName}=${pathAttr}; domain=${d}; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax${secureFlag}`
+        document.cookie = `${encodedName}=${pathAttr}; domain=${d}; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Strict${secureFlag}`
         document.cookie = `${encodedName}=${pathAttr}; domain=${d}; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=None; Secure`
-        document.cookie = `${rawName}=${pathAttr}; domain=${d}; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax`
+        document.cookie = `${rawName}=${pathAttr}; domain=${d}; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax${secureFlag}`
       }
     }
   }
