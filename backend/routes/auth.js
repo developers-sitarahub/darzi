@@ -169,14 +169,14 @@ function generateToken(user) {
   return generateAccessToken(user);
 }
 
-// Helper to set both access and refresh cookies scoped to specific domain
+// Helper to set both access and refresh cookies scoped to shared parent domain (.luxenart.in)
 function setAuthCookies(res, tokens, req) {
   const isProd = process.env.NODE_ENV === 'production';
   const atMaxAge = 15 * 60; // 15 minutes
   const rtMaxAge = 15 * 24 * 60 * 60; // 15 days
 
-  // Get current subdomain or force studio.luxenart.in in production
-  const cookieDomain = isProd ? 'studio.luxenart.in' : undefined;
+  // Use wildcard parent domain (.luxenart.in) in production so user and studio share one session
+  const cookieDomain = process.env.COOKIE_DOMAIN || (isProd ? '.luxenart.in' : undefined);
 
   const cookieOptions = {
     path: '/',
@@ -184,7 +184,7 @@ function setAuthCookies(res, tokens, req) {
     httpOnly: false,
     sameSite: 'lax',
     secure: isProd,
-    ...(cookieDomain && { domain: cookieDomain }), // Scopes specifically to studio.luxenart.in
+    ...(cookieDomain && { domain: cookieDomain }), // Scopes across .luxenart.in (both luxenart.in and studio.luxenart.in)
   };
 
   res.cookie('tg_token', tokens.accessToken, cookieOptions);
@@ -194,6 +194,7 @@ function setAuthCookies(res, tokens, req) {
     maxAge: rtMaxAge * 1000,
   });
 }
+
 
 
 // Unified user resolution & creation helper directly in PostgreSQL
@@ -1991,11 +1992,37 @@ router.post('/logout', async (req, res) => {
     }
 
     let refreshToken = req.body?.refreshToken;
+    if (!refreshToken && req.headers.cookie) {
+      const match = req.headers.cookie
+        .split(';')
+        .map((c) => c.trim())
+        .find((c) => c.startsWith('tg_refresh_token=') || c.startsWith('refreshToken='));
+      if (match) refreshToken = match.split('=')[1];
+    }
+
+    if (!userId && req.headers.cookie) {
+      const matchToken = req.headers.cookie
+        .split(';')
+        .map((c) => c.trim())
+        .find((c) => c.startsWith('tg_token=') || c.startsWith('token='));
+      if (matchToken) {
+        try {
+          const decoded = jwt.verify(matchToken.split('=')[1], JWT_SECRET);
+          userId = decoded.id;
+        } catch (_) {}
+      }
+    }
+
     if (!userId && refreshToken) {
       try {
         const decodedRt = jwt.verify(refreshToken, JWT_REFRESH_SECRET);
         userId = decodedRt.id;
-      } catch (_) { }
+      } catch (_) {
+        try {
+          const decodedRt = jwt.verify(refreshToken, JWT_SECRET);
+          userId = decodedRt.id;
+        } catch (_) {}
+      }
     }
 
     // Invalidate refresh token in database on logout
@@ -2010,7 +2037,7 @@ router.post('/logout', async (req, res) => {
     const isProd = process.env.NODE_ENV === 'production';
 
     // Clear cookies for BOTH specific host and root domain to wipe remnants
-    const domainsToClear = isProd ? ['studio.luxenart.in', '.luxenart.in', 'luxenart.in', undefined] : [undefined];
+    const domainsToClear = isProd ? ['.luxenart.in', 'studio.luxenart.in', 'luxenart.in', undefined] : [undefined];
     const cookieNames = ['tg_token', 'tg_refresh_token', 'tg_user_role', 'tg_user', 'token', 'refreshToken', 'session', 'auth_token'];
 
     cookieNames.forEach(name => {
@@ -2018,6 +2045,7 @@ router.post('/logout', async (req, res) => {
         try {
           res.clearCookie(name, { path: '/', domain: dom });
           res.clearCookie(name, { path: '/', domain: dom, httpOnly: true, sameSite: 'lax', secure: isProd });
+          res.clearCookie(name, { path: '/', domain: dom, httpOnly: false, sameSite: 'lax', secure: isProd });
         } catch (_) { }
       });
     });
@@ -2026,8 +2054,9 @@ router.post('/logout', async (req, res) => {
     const setCookieHeaders = [];
     domainsToClear.forEach(dom => {
       const domainAttr = dom ? `; Domain=${dom}` : '';
+      const secureAttr = isProd ? '; Secure' : '';
       cookieNames.forEach(name => {
-        setCookieHeaders.push(`${name}=; Path=/${domainAttr}; Expires=${expiredDate}; Max-Age=0; SameSite=Lax`);
+        setCookieHeaders.push(`${name}=; Path=/${domainAttr}; Expires=${expiredDate}; Max-Age=0; SameSite=Lax${secureAttr}`);
       });
     });
 

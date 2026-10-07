@@ -125,6 +125,7 @@ export async function fetchWithAutoRefresh(url: string, options: RequestInit = {
 export async function logoutUser(): Promise<void> {
   try {
     const token = getAuthToken()
+    const refreshToken = getRefreshToken()
     await fetch(`${API_BASE}/auth/logout`, {
       method: 'POST',
       credentials: 'include',
@@ -132,6 +133,7 @@ export async function logoutUser(): Promise<void> {
         'Content-Type': 'application/json',
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
+      body: JSON.stringify({ refreshToken }),
     })
   } catch (err) {
     console.warn('Backend logout request notice:', err)
