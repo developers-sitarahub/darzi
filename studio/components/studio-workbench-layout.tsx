@@ -106,7 +106,7 @@ export function StudioWorkbenchLayout({ children }: { children?: ReactNode }) {
     }
     setUser(null)
     if (typeof window !== 'undefined') {
-      window.location.href = customerSiteUrl || '/'
+      window.location.href = '/'
       return
     }
     router.replace('/')
