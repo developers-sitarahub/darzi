@@ -130,6 +130,9 @@ function generateRefreshToken(user) {
     {
       id: user.id,
       role: user.role || 'CUSTOMER',
+      status: user.status || 'ACTIVE',
+      studioId: user.studioId || null,
+      studioName: user.studioName || null,
       tokenType: 'refresh',
     },
     JWT_REFRESH_SECRET,

@@ -73,19 +73,22 @@ export function proxy(request: NextRequest) {
     return NextResponse.redirect(new URL(CUSTOMER_SITE_URL))
   }
 
-  // TEMP_STUDIO role is strictly restricted to onboarding steps
+  // TEMP_STUDIO role is onboarding-only
   if (role === 'TEMP_STUDIO') {
-    const isOnboardingRoute = pathname === '/' || pathname.startsWith('/onboarding')
-    if (!isOnboardingRoute) {
+    const isWorkbenchRoute =
+      pathname.startsWith('/dashboard') ||
+      pathname.startsWith('/orders') ||
+      pathname.startsWith('/earnings') ||
+      pathname.startsWith('/payouts') ||
+      pathname.startsWith('/profile') ||
+      pathname.startsWith('/settings')
+    if (isWorkbenchRoute) {
       return NextResponse.redirect(new URL('/?step=1', request.url))
     }
     return NextResponse.next()
   }
 
-  // STUDIO (and ADMIN) full partner role
-
-
-
+  // Active STUDIO / ADMIN partner: redirect root to /dashboard unless ?step is present
   if (role === 'STUDIO' || role === 'ADMIN') {
     if (pathname === '/' && !searchParams.has('step')) {
       return NextResponse.redirect(new URL('/dashboard', request.url))
@@ -93,7 +96,6 @@ export function proxy(request: NextRequest) {
     return NextResponse.next()
   }
 
-  // Allow next for valid tokens by default on root onboarding
   return NextResponse.next()
 }
 

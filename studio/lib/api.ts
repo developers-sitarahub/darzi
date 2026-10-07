@@ -447,13 +447,13 @@ export async function getCurrentUser(): Promise<User | null> {
   if (!token) {
     token = await refreshAccessToken()
     if (!token) {
-      clearAllAuth()
       return null
     }
   }
 
   try {
     let res = await fetch(`${API_BASE}/auth/me`, {
+      credentials: 'include',
       headers: { Authorization: `Bearer ${token}` },
     })
 
@@ -461,6 +461,7 @@ export async function getCurrentUser(): Promise<User | null> {
       const newToken = await refreshAccessToken()
       if (newToken) {
         res = await fetch(`${API_BASE}/auth/me`, {
+          credentials: 'include',
           headers: { Authorization: `Bearer ${newToken}` },
         })
       }
@@ -480,13 +481,15 @@ export async function getCurrentUser(): Promise<User | null> {
       }
     }
 
-    // User was deleted from database, expired, or token was invalidated -> Immediately wipe all auth
-    clearAllAuth()
-    return null
+    if (res.status === 401 || res.status === 403) {
+      clearAllAuth()
+      return null
+    }
+
+    return getAuthUser<User>()
   } catch (err) {
-    // Network failure
-    clearAllAuth()
-    return null
+    // On temporary network disconnection / hot-reload, preserve credentials
+    return getAuthUser<User>()
   }
 }
 
