@@ -102,14 +102,14 @@ export async function fetchWithAutoRefresh(url: string, options: RequestInit = {
     headers.set('Authorization', `Bearer ${token}`)
   }
 
-  let res = await fetch(url, { ...options, headers })
+  let res = await fetch(url, { credentials: 'include', ...options, headers })
 
   // If 401 Unauthorized, attempt token refresh once and retry request
   if (res.status === 401 && getRefreshToken()) {
     const newToken = await refreshAccessToken()
     if (newToken) {
       headers.set('Authorization', `Bearer ${newToken}`)
-      res = await fetch(url, { ...options, headers })
+      res = await fetch(url, { credentials: 'include', ...options, headers })
     }
   }
 
@@ -121,6 +121,7 @@ export async function logoutUser(): Promise<void> {
     const token = getAuthToken()
     await fetch(`${API_BASE}/auth/logout`, {
       method: 'POST',
+      credentials: 'include',
       headers: {
         'Content-Type': 'application/json',
         ...(token ? { Authorization: `Bearer ${token}` } : {}),

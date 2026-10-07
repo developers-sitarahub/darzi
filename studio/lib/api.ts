@@ -136,6 +136,7 @@ export async function logoutUser(): Promise<void> {
     const token = getAuthToken()
     await fetch(`${API_BASE}/auth/logout`, {
       method: 'POST',
+      credentials: 'include',
       headers: {
         'Content-Type': 'application/json',
         ...(token ? { Authorization: `Bearer ${token}` } : {}),

@@ -61,7 +61,7 @@ async function cleanupExpiredTempStudioUsers() {
       if (studioIds.length > 0) {
         await prisma.partnerStore.deleteMany({
           where: { id: { in: studioIds } },
-        }).catch(() => {});
+        }).catch(() => { });
       }
 
       const deleted = await prisma.user.deleteMany({
@@ -86,11 +86,11 @@ async function isUserExpiredTempStudio(user) {
   if (new Date(user.createdAt) < cutoff) {
     try {
       if (user.studioId) {
-        await prisma.partnerStore.delete({ where: { id: user.studioId } }).catch(() => {});
+        await prisma.partnerStore.delete({ where: { id: user.studioId } }).catch(() => { });
       }
-      await prisma.user.delete({ where: { id: user.id } }).catch(() => {});
+      await prisma.user.delete({ where: { id: user.id } }).catch(() => { });
       console.log(`[TEMP-STUDIO] Expired user ${user.id} (${user.email || user.phone}) cleared after 24h.`);
-    } catch (_) {}
+    } catch (_) { }
     return true;
   }
   return false;
@@ -611,7 +611,7 @@ router.post('/verify-otp', async (req, res) => {
           });
           if (u) targetUserId = u.id;
         }
-      } catch (_) {}
+      } catch (_) { }
     }
 
     if (!targetUserId && email) {
@@ -1975,7 +1975,7 @@ router.post('/logout', async (req, res) => {
       try {
         const decoded = jwt.verify(authHeader.split(' ')[1], JWT_SECRET);
         userId = decoded.id;
-      } catch (_) {}
+      } catch (_) { }
     }
 
     let refreshToken = req.body?.refreshToken;
@@ -1983,7 +1983,7 @@ router.post('/logout', async (req, res) => {
       try {
         const decodedRt = jwt.verify(refreshToken, JWT_REFRESH_SECRET);
         userId = decodedRt.id;
-      } catch (_) {}
+      } catch (_) { }
     }
 
     // Invalidate refresh token in database on logout
@@ -1991,7 +1991,7 @@ router.post('/logout', async (req, res) => {
       await prisma.user.update({
         where: { id: userId },
         data: { refreshToken: null },
-      }).catch(() => {});
+      }).catch(() => { });
     }
 
     const expiredDate = 'Thu, 01 Jan 1970 00:00:00 GMT';
