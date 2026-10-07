@@ -169,30 +169,32 @@ function generateToken(user) {
   return generateAccessToken(user);
 }
 
-// Helper to set both access and refresh cookies
-function setAuthCookies(res, tokens) {
+// Helper to set both access and refresh cookies scoped to specific domain
+function setAuthCookies(res, tokens, req) {
   const isProd = process.env.NODE_ENV === 'production';
-  // 15 minutes
-  const atMaxAge = 15 * 60;
-  // 15 days
-  const rtMaxAge = 15 * 24 * 60 * 60;
+  const atMaxAge = 15 * 60; // 15 minutes
+  const rtMaxAge = 15 * 24 * 60 * 60; // 15 days
 
-  res.cookie('tg_token', tokens.accessToken, {
+  // Get current subdomain or force studio.luxenart.in in production
+  const cookieDomain = isProd ? 'studio.luxenart.in' : undefined;
+
+  const cookieOptions = {
     path: '/',
     maxAge: atMaxAge * 1000,
     httpOnly: false,
     sameSite: 'lax',
     secure: isProd,
-  });
+    ...(cookieDomain && { domain: cookieDomain }), // Scopes specifically to studio.luxenart.in
+  };
+
+  res.cookie('tg_token', tokens.accessToken, cookieOptions);
 
   res.cookie('tg_refresh_token', tokens.refreshToken, {
-    path: '/',
+    ...cookieOptions,
     maxAge: rtMaxAge * 1000,
-    httpOnly: false,
-    sameSite: 'lax',
-    secure: isProd,
   });
 }
+
 
 // Unified user resolution & creation helper directly in PostgreSQL
 async function findOrLinkUser({
@@ -1975,7 +1977,7 @@ router.post('/refresh', async (req, res) => {
   }
 });
 
-// POST /api/auth/logout - Comprehensive logout endpoint clearing database token, cookies and session
+// POST /api/auth/logout
 router.post('/logout', async (req, res) => {
   try {
     const authHeader = req.headers.authorization;
@@ -2004,34 +2006,31 @@ router.post('/logout', async (req, res) => {
     }
 
     const expiredDate = 'Thu, 01 Jan 1970 00:00:00 GMT';
+    const isProd = process.env.NODE_ENV === 'production';
 
-    // Express clearCookie helper across common configurations
-    const cookieOptionsList = [
-      { path: '/', httpOnly: true, sameSite: 'lax', secure: process.env.NODE_ENV === 'production' },
-      { path: '/', httpOnly: false, sameSite: 'lax' },
-      { path: '/', sameSite: 'lax' },
-      { path: '/' }
-    ];
-
+    // Clear cookies for BOTH specific host and root domain to wipe remnants
+    const domainsToClear = isProd ? ['studio.luxenart.in', '.luxenart.in', 'luxenart.in', undefined] : [undefined];
     const cookieNames = ['tg_token', 'tg_refresh_token', 'tg_user_role', 'tg_user', 'token', 'refreshToken', 'session', 'auth_token'];
 
     cookieNames.forEach(name => {
-      cookieOptionsList.forEach(opts => {
-        try { res.clearCookie(name, opts); } catch (_) { }
+      domainsToClear.forEach(dom => {
+        try {
+          res.clearCookie(name, { path: '/', domain: dom });
+          res.clearCookie(name, { path: '/', domain: dom, httpOnly: true, sameSite: 'lax', secure: isProd });
+        } catch (_) { }
       });
     });
 
-    // Explicit Set-Cookie headers to guarantee browser clears all auth cookies
-    res.setHeader('Set-Cookie', [
-      `tg_token=; Path=/; Expires=${expiredDate}; Max-Age=0; SameSite=Lax`,
-      `tg_refresh_token=; Path=/; Expires=${expiredDate}; Max-Age=0; SameSite=Lax`,
-      `tg_user_role=; Path=/; Expires=${expiredDate}; Max-Age=0; SameSite=Lax`,
-      `tg_user=; Path=/; Expires=${expiredDate}; Max-Age=0; SameSite=Lax`,
-      `token=; Path=/; Expires=${expiredDate}; Max-Age=0; SameSite=Lax`,
-      `refreshToken=; Path=/; Expires=${expiredDate}; Max-Age=0; SameSite=Lax`,
-      `session=; Path=/; Expires=${expiredDate}; Max-Age=0; SameSite=Lax`,
-      `auth_token=; Path=/; Expires=${expiredDate}; Max-Age=0; SameSite=Lax`,
-    ]);
+    // Explicit Set-Cookie response headers targeting specific domain
+    const setCookieHeaders = [];
+    domainsToClear.forEach(dom => {
+      const domainAttr = dom ? `; Domain=${dom}` : '';
+      cookieNames.forEach(name => {
+        setCookieHeaders.push(`${name}=; Path=/${domainAttr}; Expires=${expiredDate}; Max-Age=0; SameSite=Lax`);
+      });
+    });
+
+    res.setHeader('Set-Cookie', setCookieHeaders);
 
     return res.json({ success: true, message: 'Logged out successfully' });
   } catch (err) {
