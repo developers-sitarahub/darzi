@@ -288,9 +288,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
     setUser(loggedUser)
     setIsAuthOpen(false)
-    const effectiveRole: 'CUSTOMER' | 'STUDIO' = loggedUser.role === 'STUDIO' ? 'STUDIO' : 'CUSTOMER'
+    const effectiveRole: 'CUSTOMER' | 'STUDIO' = 'CUSTOMER'
     setAuthRole(effectiveRole)
-    setCookieAuthRole(effectiveRole)
+    setCookieAuthRole(loggedUser.role || effectiveRole)
     setAuthUser(loggedUser)
 
     toast.success(`Welcome back, ${loggedUser.name || 'Member'}!`, {
