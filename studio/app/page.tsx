@@ -8,7 +8,7 @@ import { makeOtp, type User } from '@/components/data'
 import { StudioHeader } from '@/components/studio-header'
 import { PartnerFlow, type StudioTab } from '@/components/partner-flow'
 import { PartnerOnboarding } from '@/components/partner-onboarding'
-import { CustomLoader } from '@/components/custom-loader'
+import { NormalLoader } from '@/components/normal-loader'
 import { getCurrentUser, logoutUser, getCustomerSiteUrl } from '@/lib/api'
 import { getAuthUser, setAuthUser, getAuthRole, setAuthRole, clearAllAuth, getRefreshToken, getAuthToken } from '@/lib/cookies'
 
@@ -115,18 +115,8 @@ export default function StudioPage() {
 
   if (loadingUser) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-[#FAF8F5] text-[#18191B] p-6">
-        <CustomLoader
-          size="lg"
-          variant="atelier"
-          text="Connecting to Workbench"
-          steps={[
-            'Verifying Partner Permissions',
-            'Syncing Workbench Workspace',
-            'Connecting to Partner Network',
-          ]}
-          subtext="Loading tailor workbench telemetry…"
-        />
+      <div className="min-h-screen w-full flex items-center justify-center bg-[#FAF8F5]">
+        <NormalLoader />
       </div>
     )
   }
