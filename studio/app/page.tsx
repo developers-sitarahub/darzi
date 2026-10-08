@@ -9,8 +9,8 @@ import { StudioHeader } from '@/components/studio-header'
 import { PartnerFlow, type StudioTab } from '@/components/partner-flow'
 import { PartnerOnboarding } from '@/components/partner-onboarding'
 import { CustomLoader } from '@/components/custom-loader'
-import { getCurrentUser, logoutUser } from '@/lib/api'
-import { getAuthUser, setAuthUser, getAuthRole, setAuthRole, clearAllAuth } from '@/lib/cookies'
+import { getCurrentUser, logoutUser, getCustomerSiteUrl } from '@/lib/api'
+import { getAuthUser, setAuthUser, getAuthRole, setAuthRole, clearAllAuth, getRefreshToken, getAuthToken } from '@/lib/cookies'
 
 export default function StudioPage() {
   const router = useRouter()
@@ -52,6 +52,11 @@ export default function StudioPage() {
     getCurrentUser()
       .then((u) => {
         if (u) {
+          if (u.role === 'CUSTOMER') {
+            const rt = getRefreshToken() || getAuthToken()
+            window.location.replace(getCustomerSiteUrl('/auth/callback', rt))
+            return
+          }
           const currentRole = getAuthRole()
           const effectiveRole: 'STUDIO' | 'TEMP_STUDIO' = (u.role === 'STUDIO' || currentRole === 'STUDIO') ? 'STUDIO' : 'TEMP_STUDIO'
           const finalUser: User = { ...u, role: effectiveRole }
