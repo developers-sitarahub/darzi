@@ -28,6 +28,7 @@ const isProduction = process.env.NODE_ENV === "production";
 const envOrigins = [
   process.env.FRONTEND_URL,
   process.env.STUDIO_URL,
+  process.env.ADMIN_URL,
   process.env.ALLOWED_ORIGINS,
 ]
   .filter(Boolean)
@@ -77,13 +78,14 @@ app.use(
 
 // 3. Rate Limiting Protection (Anti-DoS / Brute Force)
 const isLoopbackIp = (req) => {
-  const ip = req.ip || req.connection?.remoteAddress || req.socket?.remoteAddress || '';
+  const ip =
+    req.ip || req.connection?.remoteAddress || req.socket?.remoteAddress || "";
   return (
-    ip === '127.0.0.1' ||
-    ip === '::1' ||
-    ip === '::ffff:127.0.0.1' ||
-    ip.endsWith('127.0.0.1') ||
-    ip === 'localhost'
+    ip === "127.0.0.1" ||
+    ip === "::1" ||
+    ip === "::ffff:127.0.0.1" ||
+    ip.endsWith("127.0.0.1") ||
+    ip === "localhost"
   );
 };
 

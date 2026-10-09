@@ -23,9 +23,10 @@ import {
   Clock,
   X,
   Copy,
+  Mail,
 } from 'lucide-react'
 import { toast } from 'react-toastify'
-import { createOrder, fetchOrderById, getCurrentUser, updateOrder } from '@/lib/api'
+import { createOrder, fetchOrderById, getCurrentUser, updateOrder, sendOrderPinEmail } from '@/lib/api'
 import { getAuthUser, getStorageCookie, setStorageCookie } from '@/lib/cookies'
 import { getAllGarmentPhotos, type User, type StoreOption } from './data'
 import CleanGoogleMap, { openCarNavigation, calculateDistanceInMiles } from './CleanGoogleMap'
@@ -343,9 +344,9 @@ export function OrderDetailsView({ slugId = 'ORD-6154', onGoHome, onGoOrders }: 
     }
     return true
   })
+  const [initialFetchDone, setInitialFetchDone] = useState(false)
   const [copiedToast, setCopiedToast] = useState(false)
-  const [isPinGenerated, setIsPinGenerated] = useState(false)
-  const [isGeneratingPin, setIsGeneratingPin] = useState(false)
+  const [isSendingPinEmail, setIsSendingPinEmail] = useState(false)
   const [isLocating, setIsLocating] = useState(false)
   const [userCoords, setUserCoords] = useState<{ lat: number; lng: number } | null>(null)
   const [inProcessDots, setInProcessDots] = useState('')
@@ -374,11 +375,6 @@ export function OrderDetailsView({ slugId = 'ORD-6154', onGoHome, onGoOrders }: 
     return () => clearInterval(interval)
   }, [])
 
-  useEffect(() => {
-    if (isReady) {
-      setIsPinGenerated(false)
-    }
-  }, [isReady])
 
   // Auto-detect location non-blocking if permission granted
   useEffect(() => {
@@ -422,8 +418,19 @@ export function OrderDetailsView({ slugId = 'ORD-6154', onGoHome, onGoOrders }: 
         if (isMounted) {
           if (fetched) {
             setOrder(fetched)
+            if (typeof window !== 'undefined') {
+              try {
+                localStorage.setItem(`tg_order_${slugId}`, JSON.stringify(fetched))
+                setStorageCookie(`tg_order_${slugId}`, JSON.stringify(fetched))
+                if (fetched.id) {
+                  localStorage.setItem(`tg_order_${fetched.id}`, JSON.stringify(fetched))
+                  setStorageCookie(`tg_order_${fetched.id}`, JSON.stringify(fetched))
+                }
+              } catch {}
+            }
             if (isInitial) {
               setIsLoading(false)
+              setInitialFetchDone(true)
               stopBookingTransition()
             }
             return
@@ -439,6 +446,7 @@ export function OrderDetailsView({ slugId = 'ORD-6154', onGoHome, onGoOrders }: 
             setOrder(null)
             if (isInitial) {
               setIsLoading(false)
+              setInitialFetchDone(true)
               stopBookingTransition()
             }
             return
@@ -452,10 +460,12 @@ export function OrderDetailsView({ slugId = 'ORD-6154', onGoHome, onGoOrders }: 
       if (isMounted && isInitial) {
         setOrder(null)
         setIsLoading(false)
+        setInitialFetchDone(true)
         stopBookingTransition()
       }
     }
 
+    setInitialFetchDone(false)
     loadOrderData(true)
 
     const interval = setInterval(() => {
@@ -633,22 +643,28 @@ export function OrderDetailsView({ slugId = 'ORD-6154', onGoHome, onGoOrders }: 
     coords: tailorCoords,
   }
 
-  const handleGeneratePin = async () => {
-    if (isPinGenerated) return
-    setIsGeneratingPin(true)
-    if (!order?.otp && (order?.id || slugId)) {
-      try {
-        const fresh = await fetchOrderById(order?.id || slugId)
-        if (fresh && fresh.otp) {
-          setOrder(fresh)
-        }
-      } catch { }
+
+  const handleSendPinEmail = async () => {
+    const rawOId = order?.id || slugId
+    if (!rawOId) return
+    const cleanOId = String(rawOId).replace(/^#/, '').trim()
+    setIsSendingPinEmail(true)
+    try {
+      const targetEmail = currentUser?.email || order?.customerEmail
+      const res = await sendOrderPinEmail(cleanOId, targetEmail)
+      if (res.success) {
+        toast.success(`PIN sent to ${res.email || targetEmail || 'your email'}!`, {
+          position: 'top-center',
+          autoClose: 4000,
+        })
+      } else {
+        toast.error(res.error || res.message || 'Failed to send PIN email', { position: 'top-center' })
+      }
+    } catch {
+      toast.error('Unable to send PIN email. Please try again.', { position: 'top-center' })
+    } finally {
+      setIsSendingPinEmail(false)
     }
-    setTimeout(() => {
-      setIsGeneratingPin(false)
-      setIsPinGenerated(true)
-      toast.success('4-Digit PIN revealed successfully!', { position: 'top-center', autoClose: 2000 })
-    }, 450)
   }
 
   const handleShareMap = () => {
@@ -851,7 +867,7 @@ export function OrderDetailsView({ slugId = 'ORD-6154', onGoHome, onGoOrders }: 
     )
   }
 
-  if (isLoading && !order) {
+  if ((isLoading && !order) || (!initialFetchDone && (!order || isAllocated))) {
     return (
       <div className="min-h-[calc(100vh-68px)] flex items-center justify-center p-6 bg-[#FAF8F5]">
         <SewingLoader
@@ -1137,29 +1153,36 @@ export function OrderDetailsView({ slugId = 'ORD-6154', onGoHome, onGoOrders }: 
                       ✓ Fulfilled &bull; Closed
                     </span>
                   </div>
-                ) : !isPinGenerated ? (
-                  <button
-                    type="button"
-                    onClick={handleGeneratePin}
-                    disabled={isGeneratingPin}
-                    className="shrink-0 bg-black text-white hover:bg-neutral-800 active:scale-95 border border-black rounded-2xl w-[155px] h-[58px] text-center shadow-md transition-all cursor-pointer flex items-center justify-center font-bold text-xs sm:text-sm tracking-wide group"
-                  >
-                    {isGeneratingPin ? (
-                      <div className="flex items-center justify-center gap-2">
-                        <Loader2 size={15} className="animate-spin text-white" />
-                        <span>Revealing...</span>
-                      </div>
-                    ) : (
-                      <span>Reveal PIN</span>
-                    )}
-                  </button>
                 ) : (
-                  <div
-                    className="shrink-0 bg-black text-white border border-black rounded-2xl w-[155px] h-[58px] text-center shadow-md flex items-center justify-center animate-in zoom-in-95 duration-150"
-                  >
-                    <span className="text-xl sm:text-2xl font-mono font-black text-white tracking-[0.25em] leading-none block">
-                      {formattedOtp}
-                    </span>
+                  <div className="flex flex-col items-center shrink-0">
+                    <div
+                      className="shrink-0 bg-black text-white border border-black rounded-2xl w-[155px] h-[58px] text-center shadow-md flex items-center justify-center animate-in zoom-in-95 duration-150"
+                    >
+                      <span className="text-xl sm:text-2xl font-mono font-black text-white tracking-[0.25em] leading-none block">
+                        {formattedOtp}
+                      </span>
+                    </div>
+                    {(order?.customerEmail || currentUser?.email) && (
+                      <button
+                        type="button"
+                        onClick={handleSendPinEmail}
+                        disabled={isSendingPinEmail}
+                        className="mt-1.5 inline-flex items-center gap-1 text-[10px] font-bold text-gray-500 hover:text-black transition-colors cursor-pointer disabled:opacity-50"
+                        title="Send confirmation PIN to your email"
+                      >
+                        {isSendingPinEmail ? (
+                          <>
+                            <Loader2 size={10} className="animate-spin" />
+                            <span>Sending...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Mail size={10} />
+                            <span>Email PIN to Me</span>
+                          </>
+                        )}
+                      </button>
+                    )}
                   </div>
                 )}
 
@@ -1200,6 +1223,73 @@ export function OrderDetailsView({ slugId = 'ORD-6154', onGoHome, onGoOrders }: 
                 </div>
 
               </div>
+
+              {/* Atelier Pricing & Invoice Card */}
+              {(() => {
+                const currencySym = (order as any)?.currencySymbol || '$'
+                const isAwaitingAcceptance = !order?.status || order?.status === 'Allocated'
+                const basePrice = typeof order?.price === 'number' ? order.price : parseFloat((order as any)?.price || '20') || 20
+                const adjustment = (order as any)?.priceAdjustment ? parseFloat(String((order as any).priceAdjustment)) : 0
+                const totalPrice = basePrice + adjustment
+
+                return (
+                  <div className="py-3.5 border-b border-gray-100">
+                    <div className="rounded-xl bg-[#FAF8F5] border border-[#E8E1D5] p-3.5 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[9.5px] font-extrabold uppercase tracking-wider text-gray-500">
+                          Workshop Pricing &amp; Bill
+                        </span>
+                        {isAwaitingAcceptance ? (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-200">
+                            Pending Atelier Match
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
+                            ✓ Confirmed by {storeNameDisplay}
+                          </span>
+                        )}
+                      </div>
+
+                      {isAwaitingAcceptance ? (
+                        <div className="space-y-1">
+                          <div className="flex items-baseline justify-between">
+                            <span className="text-xs text-gray-600 font-medium">Estimated Starting Rate:</span>
+                            <span className="text-sm font-bold text-gray-800">~{currencySym}{basePrice.toFixed(2)}</span>
+                          </div>
+                          <p className="text-[11px] text-amber-800 leading-snug">
+                            Exact alteration price will be calculated and confirmed from the atelier&apos;s workshop catalog once they accept your order.
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="space-y-1.5 pt-0.5">
+                          <div className="flex items-center justify-between text-xs text-gray-700">
+                            <span>Base Workshop Alteration:</span>
+                            <span className="font-semibold">{currencySym}{basePrice.toFixed(2)}</span>
+                          </div>
+
+                          {adjustment > 0 && (
+                            <div className="flex items-center justify-between text-xs text-amber-900 bg-amber-50/80 px-2 py-1 rounded-lg border border-amber-200/60">
+                              <span className="truncate pr-2">
+                                Critical Work Surcharge ({(order as any).priceAdjustmentReason || 'Delicate fabric / complex finishing'}):
+                              </span>
+                              <span className="font-bold shrink-0">+{currencySym}{adjustment.toFixed(2)}</span>
+                            </div>
+                          )}
+
+                          <div className="flex items-center justify-between pt-1 border-t border-gray-200 text-xs sm:text-sm font-extrabold text-[#0F1115]">
+                            <span>Total Due at Studio Pickup:</span>
+                            <span className="text-base text-[#9E593B] font-mono">{currencySym}{totalPrice.toFixed(2)}</span>
+                          </div>
+
+                          <p className="text-[10px] text-gray-500 pt-0.5">
+                            Direct counter payment to the partner atelier upon inspecting your fitted garment.
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )
+              })()}
 
               {/* Lower Section: Garment Notes & Photos */}
               <div className="pt-4 space-y-3">

@@ -21,9 +21,12 @@ import {
   ShieldCheck,
   Plus,
   Minus,
+  Home,
+  Briefcase,
+  Tag,
 } from 'lucide-react'
 import { CityModal } from '@/components/city-modal'
-import { useCityLocation, getCityCoordinates, setStoredCity, formatLocationDisplay, resolveAccurateCityFromComponents } from '@/components/use-city-location'
+import { useCityLocation, getCityCoordinates, setStoredCity, formatLocationDisplay, resolveAccurateCityFromComponents, reverseGeocodeCoords } from '@/components/use-city-location'
 import CleanGoogleMap from '@/components/CleanGoogleMap'
 import { NormalLoader } from '@/components/normal-loader'
 import { SewingLoader } from '@/components/sewing-loader'
@@ -32,6 +35,7 @@ import { getStorageCookie, setStorageCookie, getCookie, deleteCookie } from '@/l
 import { useApp } from '@/components/app-provider'
 import { type GarmentCategory, getStoresForLocation, getClosestStoreForLocation, type StoreOption } from '@/components/data'
 import { getCachedReverseGeocode, setCachedReverseGeocode } from '@/lib/geocode-cache'
+import { addSavedAddress } from '@/lib/saved-addresses'
 
 const SESSION_BOOKING_KEY = 'tg_book_session'
 
@@ -41,7 +45,7 @@ function getSessionBookingData(): any | null {
     deleteCookie(SESSION_BOOKING_KEY, '/')
     const raw = sessionStorage.getItem(SESSION_BOOKING_KEY)
     if (raw) return JSON.parse(raw)
-  } catch {}
+  } catch { }
   return null
 }
 
@@ -51,14 +55,14 @@ function setSessionBookingData(data: any): void {
     const json = JSON.stringify(data)
     sessionStorage.setItem(SESSION_BOOKING_KEY, json)
     deleteCookie(SESSION_BOOKING_KEY, '/')
-  } catch {}
+  } catch { }
 }
 
 function clearSessionBookingData(): void {
   if (typeof window !== 'undefined') {
     try {
       sessionStorage.removeItem(SESSION_BOOKING_KEY)
-    } catch {}
+    } catch { }
     deleteCookie(SESSION_BOOKING_KEY, '/')
   }
 }
@@ -194,7 +198,7 @@ export default function BookPage() {
 
   const [selectedCity, setSelectedCity] = useCityLocation()
   const [isCityModalOpen, setIsCityModalOpen] = useState(false)
-  
+
   // Initialize states from current session cookie/storage if present
   const [userGpsCoords, setUserGpsCoords] = useState<{ lat: number; lng: number } | null>(() => {
     const s = getSessionBookingData()
@@ -212,6 +216,7 @@ export default function BookPage() {
   // 3D Card Flip state for Address Details input
   const [isCardFlipped, setIsCardFlipped] = useState(() => {
     const s = getSessionBookingData()
+    if (s?.isLocationSaved === true) return false
     return typeof s?.isCardFlipped === 'boolean' ? s.isCardFlipped : false
   })
 
@@ -227,6 +232,14 @@ export default function BookPage() {
     }
   })
 
+  // Synchronized search text for map search bar
+  const [mapSearchQuery, setMapSearchQuery] = useState('')
+
+  // Click to Save Address Toggle & Tag Selection
+  const [isSaveAddressChecked, setIsSaveAddressChecked] = useState(false)
+  const [addressTag, setAddressTag] = useState<'home' | 'work' | 'other'>('home')
+  const [customAddressTag, setCustomAddressTag] = useState('')
+
   const handleAddressFieldChange = (field: keyof CustomerAddressDetails, value: string) => {
     setAddressDetails((prev) => {
       const updated = { ...prev, [field]: value }
@@ -235,74 +248,6 @@ export default function BookPage() {
       }
       return updated
     })
-  }
-
-  // Handle Save Address & Update Radius Centers & User Profile
-  const handleSaveAddress = async () => {
-    const fullAddress = [
-      addressDetails.houseNo,
-      addressDetails.apartment,
-      addressDetails.locality,
-      addressDetails.city || selectedCity,
-    ].filter(Boolean).join(', ') || selectedCity
-
-    const targetCoords = userGpsCoords || getCityCoordinates(selectedCity)
-    const activeCityName = addressDetails.city?.trim() || selectedCity
-
-    // 1. Save Coordinates & City
-    setSelectedCity(activeCityName)
-    setStoredCity(activeCityName, targetCoords)
-    setUserGpsCoords(targetCoords)
-    setIsLiveLocation(false)
-    setIsLocationSaved(true)
-
-    // 2. Fetch tailors from database taking this exact saved pinned location as center of 5.0-mile radius
-    try {
-      const data = await fetchNearbyTailors(targetCoords.lat, targetCoords.lng, 5.0)
-      if (data && Array.isArray(data.tailors)) {
-        setNearbyStores(data.tailors)
-        if (data.tailors.length > 0) {
-          setSelectedStore(data.tailors[0])
-        } else {
-          setSelectedStore(null)
-        }
-      }
-    } catch (err) {
-      console.warn('Error fetching tailors for saved pinned location:', err)
-    }
-
-    // 3. Save this address to User Profile in Backend & Client session
-    if (user) {
-      const updatedUserPayload = {
-        ...user,
-        address: fullAddress,
-        postcode: addressDetails.locality || addressDetails.city || selectedCity,
-      }
-      setUser(updatedUserPayload)
-
-      try {
-        await updateUserProfile({
-          address: fullAddress,
-          postcode: addressDetails.locality || addressDetails.city || selectedCity,
-        })
-      } catch (err) {
-        console.warn('Error saving address to user profile in backend:', err)
-      }
-    }
-
-    if (typeof window !== 'undefined') {
-      try {
-        localStorage.setItem(`tg_saved_address_${user?.id || 'guest'}`, JSON.stringify({
-          address: fullAddress,
-          details: addressDetails,
-          coords: targetCoords,
-        }))
-      } catch {}
-    }
-
-    // 4. Flip card back to order request face
-    setIsCardFlipped(false)
-    toast.success('Address saved to profile & nearby ateliers updated!', { position: 'top-center' })
   }
 
   // Selection states initialized from prefilled context or session cookie
@@ -341,6 +286,137 @@ export default function BookPage() {
     landmark: '',
   })
 
+  // Confirmed / saved location snapshot to restore if user clicks "Back to Request" without saving
+  const savedLocationRef = useRef<{
+    coords: { lat: number; lng: number } | null
+    city: string
+    addressDetails: CustomerAddressDetails
+    isLiveLocation: boolean
+    isLocationSaved: boolean
+  }>({
+    coords: userGpsCoords,
+    city: selectedCity,
+    addressDetails,
+    isLiveLocation,
+    isLocationSaved,
+  })
+
+  // Handle Save Address & Update Radius Centers & User Profile
+  const handleSaveAddress = async () => {
+    if (!addressDetails.houseNo.trim()) {
+      toast.error('Please enter your House No. / Flat No.', { position: 'top-center' })
+      return
+    }
+
+    const fullAddress = [
+      addressDetails.houseNo,
+      addressDetails.apartment,
+      addressDetails.locality,
+      addressDetails.city || selectedCity,
+    ].filter(Boolean).join(', ') || selectedCity
+
+    const targetCoords = userGpsCoords || getCityCoordinates(selectedCity)
+    const activeCityName = addressDetails.city?.trim() || selectedCity
+
+    // 1. Save Coordinates & City for active order session
+    setSelectedCity(activeCityName)
+    setStoredCity(activeCityName, targetCoords)
+    setUserGpsCoords(targetCoords)
+    setIsLiveLocation(false)
+    setIsLocationSaved(true)
+
+    // 2. Only if "Click to Save Address" is clicked, save to Address Book & Database profile
+    let tagTitle = ''
+    if (isSaveAddressChecked) {
+      if (addressTag === 'home') {
+        tagTitle = 'Home'
+      } else if (addressTag === 'work') {
+        tagTitle = 'Work'
+      } else if (addressTag === 'other') {
+        tagTitle = customAddressTag.trim() || 'Other'
+      }
+
+      // Save to Global Saved Addresses Book (Local Storage & App-wide Broadcast)
+      addSavedAddress(
+        {
+          title: tagTitle,
+          address: fullAddress,
+          locality: addressDetails.locality,
+          city: activeCityName,
+          lat: targetCoords.lat,
+          lng: targetCoords.lng,
+          details: {
+            ...addressDetails,
+            city: activeCityName,
+          },
+        },
+        user?.id
+      )
+
+      // Save this address to User Profile in Backend & Client session
+      if (user) {
+        const updatedUserPayload = {
+          ...user,
+          address: fullAddress,
+          postcode: addressDetails.locality || addressDetails.city || selectedCity,
+        }
+        setUser(updatedUserPayload)
+
+        try {
+          await updateUserProfile({
+            address: fullAddress,
+            postcode: addressDetails.locality || addressDetails.city || selectedCity,
+          })
+        } catch (err) {
+          console.warn('Error saving address to user profile in backend:', err)
+        }
+      }
+
+      if (typeof window !== 'undefined') {
+        try {
+          localStorage.setItem(`tg_saved_address_${user?.id || 'guest'}`, JSON.stringify({
+            title: tagTitle,
+            address: fullAddress,
+            details: addressDetails,
+            coords: targetCoords,
+          }))
+        } catch { }
+      }
+    }
+
+    // 3. Update confirmed snapshot
+    savedLocationRef.current = {
+      coords: targetCoords,
+      city: activeCityName,
+      addressDetails: { ...addressDetails, city: activeCityName },
+      isLiveLocation: false,
+      isLocationSaved: true,
+    }
+
+    // 4. Fetch tailors from database taking this exact saved pinned location as center of 5.0-mile radius
+    try {
+      const data = await fetchNearbyTailors(targetCoords.lat, targetCoords.lng, 5.0)
+      if (data && Array.isArray(data.tailors)) {
+        setNearbyStores(data.tailors)
+        if (data.tailors.length > 0) {
+          setSelectedStore(data.tailors[0])
+        } else {
+          setSelectedStore(null)
+        }
+      }
+    } catch (err) {
+      console.warn('Error fetching tailors for saved pinned location:', err)
+    }
+
+    // 5. Flip card back to order request face
+    setIsCardFlipped(false)
+    if (isSaveAddressChecked && tagTitle) {
+      toast.success(`Address saved as "${tagTitle}"!`, { position: 'top-center' })
+    } else {
+      toast.success('Address updated for this order!', { position: 'top-center' })
+    }
+  }
+
   useEffect(() => {
     if (typeof window === 'undefined' || !navigator.geolocation) return
 
@@ -348,7 +424,7 @@ export default function BookPage() {
     const hasManualLocationOverride = sessionData && sessionData.isLocationSaved === true
 
     navigator.geolocation.getCurrentPosition(
-      (position) => {
+      async (position) => {
         const { latitude, longitude } = position.coords
         const liveCoords = { lat: latitude, lng: longitude }
         liveGpsCoordsRef.current = liveCoords
@@ -359,67 +435,37 @@ export default function BookPage() {
           setIsLiveLocation(true)
         }
 
-        // Check cache first to avoid redundant Google Geocoder call
-        const cached = getCachedReverseGeocode(liveCoords.lat, liveCoords.lng)
-        if (cached) {
-          const cachedDetails: CustomerAddressDetails = {
-            houseNo: cached.houseNo,
-            apartment: cached.apartment,
-            locality: cached.locality,
-            city: cached.city,
+        try {
+          const geo = await reverseGeocodeCoords(latitude, longitude)
+          const newDetails: CustomerAddressDetails = {
+            houseNo: geo.houseNo || '',
+            apartment: geo.apartment || '',
+            locality: geo.locality || geo.displayLocality?.split(',')[0]?.trim() || '',
+            city: geo.cityStateFormatted || selectedCity,
             landmark: '',
           }
-          liveAddressDetailsRef.current = cachedDetails
-          liveCityRef.current = cached.city
+
+          liveAddressDetailsRef.current = newDetails
+          liveCityRef.current = geo.cityStateFormatted
+
           if (!hasManualLocationOverride) {
-            setAddressDetails((prev) => ({ ...prev, ...cachedDetails }))
-            setSelectedCity(cached.city)
-            setStoredCity(cached.city, liveCoords)
+            setAddressDetails((prev) => ({
+              ...prev,
+              ...newDetails,
+            }))
+            setSelectedCity(geo.cityStateFormatted)
+            setStoredCity(geo.cityStateFormatted, liveCoords)
+
+            savedLocationRef.current = {
+              coords: liveCoords,
+              city: geo.cityStateFormatted,
+              addressDetails: newDetails,
+              isLiveLocation: true,
+              isLocationSaved: false,
+            }
           }
-          return
-        }
-
-        // Reverse geocode via Google Geocoder if available
-        if (typeof google !== 'undefined' && google.maps?.Geocoder) {
-          try {
-            const geocoder = new google.maps.Geocoder()
-            geocoder.geocode({ location: liveCoords }, (results, status) => {
-              if (status === 'OK' && Array.isArray(results) && results.length > 0) {
-                const parsed = parseGoogleAddressComponents(results, liveCoords.lat, liveCoords.lng)
-                const newDetails: CustomerAddressDetails = {
-                  houseNo: parsed.houseNo || '',
-                  apartment: parsed.apartment || '',
-                  locality: parsed.locality || '',
-                  city: parsed.city || '',
-                  landmark: '',
-                }
-                liveAddressDetailsRef.current = newDetails
-
-                const comps = results[0]?.address_components || []
-                const formattedAddress = results[0]?.formatted_address || ''
-                const accurate = resolveAccurateCityFromComponents(comps, liveCoords.lat, liveCoords.lng, formattedAddress)
-                const formatted = accurate.fullFormatted
-                liveCityRef.current = formatted
-
-                setCachedReverseGeocode(liveCoords.lat, liveCoords.lng, {
-                  houseNo: newDetails.houseNo,
-                  apartment: newDetails.apartment,
-                  locality: newDetails.locality,
-                  city: formatted,
-                  formattedAddress: formatted,
-                })
-
-                if (!hasManualLocationOverride) {
-                  setAddressDetails((prev) => ({
-                    ...prev,
-                    ...newDetails,
-                  }))
-                  setSelectedCity(formatted)
-                  setStoredCity(formatted, liveCoords)
-                }
-              }
-            })
-          } catch {}
+        } catch (err) {
+          console.warn('Geolocation reverse geocoding failed:', err)
         }
       },
       (err) => {
@@ -429,35 +475,26 @@ export default function BookPage() {
     )
   }, [setSelectedCity])
 
-  // Handle clicking "Back to Request" on the address details card
+  // Handle clicking "Back to Request" on the address details card without saving (discards unconfirmed search/pin)
   const handleBackToRequest = () => {
-    setIsCardFlipped(false)
-
-    // If the user did not explicitly save this location, automatically revert to current live location
-    if (!isLocationSaved) {
-      if (liveGpsCoordsRef.current) {
-        setUserGpsCoords(liveGpsCoordsRef.current)
-        setIsLiveLocation(true)
-        if (liveCityRef.current) {
-          setSelectedCity(liveCityRef.current)
-          setStoredCity(liveCityRef.current, liveGpsCoordsRef.current)
-        }
-        if (liveAddressDetailsRef.current) {
-          setAddressDetails(liveAddressDetailsRef.current)
-        }
-      } else if (typeof window !== 'undefined' && navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition(
-          (position) => {
-            const live = { lat: position.coords.latitude, lng: position.coords.longitude }
-            liveGpsCoordsRef.current = live
-            setUserGpsCoords(live)
-            setIsLiveLocation(true)
-          },
-          () => {},
-          { enableHighAccuracy: true, timeout: 6000 }
-        )
-      }
+    const saved = savedLocationRef.current
+    if (saved) {
+      setUserGpsCoords(saved.coords)
+      setSelectedCity(saved.city)
+      setStoredCity(saved.city, saved.coords || getCityCoordinates(saved.city))
+      setAddressDetails({ ...saved.addressDetails })
+      setIsLiveLocation(saved.isLiveLocation)
+      setIsLocationSaved(saved.isLocationSaved)
+    } else if (liveGpsCoordsRef.current) {
+      setUserGpsCoords(liveGpsCoordsRef.current)
+      const city = liveCityRef.current || selectedCity
+      setSelectedCity(city)
+      setStoredCity(city, liveGpsCoordsRef.current)
+      setAddressDetails({ ...liveAddressDetailsRef.current })
+      setIsLiveLocation(true)
+      setIsLocationSaved(false)
     }
+    setIsCardFlipped(false)
   }
 
   const [bookingNotes, setBookingNotes] = useState(() => {
@@ -1052,16 +1089,18 @@ export default function BookPage() {
                   backfaceVisibility: 'hidden',
                   WebkitBackfaceVisibility: 'hidden',
                 }}
-                className={`bg-white rounded-[28px] border border-gray-200/90 shadow-sm p-6 sm:p-7 space-y-6 transition-opacity duration-300 ${
-                  isCardFlipped ? 'pointer-events-none opacity-0' : 'pointer-events-auto opacity-100'
-                }`}
+                className={`bg-white rounded-[28px] border border-gray-200/90 shadow-sm p-6 sm:p-7 space-y-6 transition-opacity duration-300 ${isCardFlipped ? 'pointer-events-none opacity-0' : 'pointer-events-auto opacity-100'
+                  }`}
               >
 
-                {/* City Pill Header */}
+                {/* City & Locality Pill Header */}
                 <div className="flex items-center gap-2 text-sm text-[#0F1115] font-medium">
                   <MapPin size={16} className="text-black shrink-0" />
-                  <span className="font-extrabold truncate max-w-[320px]" title={selectedCity}>
-                    {formatLocationDisplay(selectedCity)}
+                  <span
+                    className="font-extrabold truncate max-w-[320px]"
+                    title={addressDetails.locality ? `${addressDetails.locality}, ${addressDetails.city || selectedCity}` : (addressDetails.city || selectedCity)}
+                  >
+                    {formatLocationDisplay(addressDetails.city || selectedCity, addressDetails.locality)}
                   </span>
                   <button
                     type="button"
@@ -1096,7 +1135,7 @@ export default function BookPage() {
                           CATEGORY OF CLOTHES
                         </p>
                         <p className="text-sm sm:text-base font-extrabold text-black truncate">
-                          {currentCategory ? `${currentCategory.name} (from $${currentCategory.startingPrice})` : 'Loading categories...'}
+                          {currentCategory ? currentCategory.name : 'Loading categories...'}
                         </p>
                       </div>
                     </div>
@@ -1126,7 +1165,7 @@ export default function BookPage() {
                               </div>
                               <div>
                                 <p className="text-xs sm:text-sm text-black font-extrabold">{cat.name}</p>
-                                <p className="text-[11px] text-gray-500">From ${cat.startingPrice} • {cat.avgTurnaround}</p>
+                                <p className="text-[11px] text-gray-500">{cat.avgTurnaround} • Atelier Tailored</p>
                               </div>
                             </div>
                             {isSelected && <Check size={16} className="text-black shrink-0" />}
@@ -1156,7 +1195,7 @@ export default function BookPage() {
                           WHAT NEEDS TO BE DONE?
                         </p>
                         <p className="text-sm sm:text-base font-extrabold text-black truncate">
-                          {currentService ? `${currentService.name} ($${currentService.customerPrice})` : 'Select alteration'}
+                          {currentService ? currentService.name : 'Select alteration'}
                         </p>
                       </div>
                     </div>
@@ -1188,8 +1227,9 @@ export default function BookPage() {
                               <p className="text-[11px] text-gray-500">{srv.description}</p>
                             </div>
                             <div className="text-right shrink-0 ml-3">
-                              <p className="text-xs sm:text-sm font-black text-black">${srv.customerPrice}</p>
-                              <p className="text-[10px] text-gray-400">{srv.turnaroundDays}d SLA</p>
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-neutral-200 text-neutral-800">
+                                {srv.turnaroundDays}d SLA
+                              </span>
                             </div>
                           </button>
                         )
@@ -1234,17 +1274,17 @@ export default function BookPage() {
                   </div>
                 </div>
 
-              {/* 4. Garment Photo / Reference Fit (Optional - Max 4) */}
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <p className="text-[10px] font-black uppercase tracking-wider text-neutral-500 flex items-center gap-1">
-                    <span>GARMENT PHOTO / REFERENCE FIT</span>
-                    <span className="text-gray-400 font-normal">(OPTIONAL)</span>
-                  </p>
-                  <span className="text-[10px] font-bold text-gray-500">
-                    {uploadedImages.length}/4 Photos
-                  </span>
-                </div>
+                {/* 4. Garment Photo / Reference Fit (Optional - Max 4) */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <p className="text-[10px] font-black uppercase tracking-wider text-neutral-500 flex items-center gap-1">
+                      <span>GARMENT PHOTO / REFERENCE FIT</span>
+                      <span className="text-gray-400 font-normal">(OPTIONAL)</span>
+                    </p>
+                    <span className="text-[10px] font-bold text-gray-500">
+                      {uploadedImages.length}/4 Photos
+                    </span>
+                  </div>
 
                   <div className="flex flex-wrap items-center gap-3">
                     <input
@@ -1287,21 +1327,22 @@ export default function BookPage() {
                   </div>
                 </div>
 
-              {/* 4. Fitting & Alteration Notes Section */}
-              <div className="pt-3.5 border-t border-gray-100 space-y-2">
-                <label htmlFor="booking-notes" className="flex items-center gap-1.5 text-[11px] font-black uppercase tracking-wider text-neutral-500">
-                  <Edit3 size={13} className="text-[#9E593B]" />
-                  <span>Fitting &amp; Alteration Notes / Instructions</span>
-                </label>
-                <textarea
-                  id="booking-notes"
-                  value={bookingNotes}
-                  onChange={(e) => setBookingNotes(e.target.value)}
-                  placeholder="Add any specific fitting notes, style preferences, or alteration instructions for the tailor..."
-                  rows={3}
-                  className="w-full px-3.5 py-2.5 rounded-2xl border border-gray-200 bg-[#F9F9F9] focus:bg-white focus:border-black text-xs font-semibold text-black placeholder:text-gray-400 outline-none transition-all resize-none shadow-2xs"
-                />
-              </div>
+                {/* 4. Fitting & Alteration Notes Section */}
+                <div className="pt-3.5 border-t border-gray-100 space-y-2">
+                  <label htmlFor="booking-notes" className="flex items-center gap-1.5 text-[11px] font-black uppercase tracking-wider text-neutral-500">
+                    <Edit3 size={13} className="text-[#9E593B]" />
+                    <span>Fitting &amp; Alteration Notes / Instructions</span>
+                  </label>
+                  <textarea
+                    id="booking-notes"
+                    value={bookingNotes}
+                    onChange={(e) => setBookingNotes(e.target.value)}
+                    placeholder="Add any specific fitting notes, style preferences, or alteration instructions for the tailor..."
+                    rows={2}
+                    className="w-full bg-transparent border-b border-[#D5CDC2] focus:border-black py-1.5 text-xs sm:text-sm font-semibold text-black placeholder:text-neutral-400 outline-none transition-colors resize-none"
+                  />
+                </div>
+
 
                 {/* 5. Action Buttons Row */}
                 <div className="flex flex-wrap sm:flex-nowrap items-center gap-3 pt-3 border-t border-gray-100">
@@ -1332,9 +1373,8 @@ export default function BookPage() {
                   WebkitBackfaceVisibility: 'hidden',
                   transform: 'rotateY(180deg)',
                 }}
-                className={`absolute inset-0 bg-white rounded-[28px] border border-gray-200/90 shadow-sm p-6 sm:p-7 flex flex-col justify-between overflow-y-auto ${
-                  isCardFlipped ? 'pointer-events-auto opacity-100 z-20' : 'pointer-events-none opacity-0 z-0'
-                }`}
+                className={`absolute inset-0 bg-white rounded-[28px] border border-gray-200/90 shadow-sm p-6 sm:p-7 flex flex-col justify-between overflow-y-auto ${isCardFlipped ? 'pointer-events-auto opacity-100 z-20' : 'pointer-events-none opacity-0 z-0'
+                  }`}
               >
                 <div className="space-y-4 sm:space-y-5">
                   {/* Top Bar: Back button */}
@@ -1358,10 +1398,10 @@ export default function BookPage() {
                     </p>
                   </div>
 
-                  {/* Input Fields (Identical font style & spacing) */}
-                  <div className="space-y-3">
+                  {/* Input Fields (Clean Bespoke Luxury Editorial Style) */}
+                  <div className="space-y-4">
                     <div>
-                      <label className="block text-[10px] font-black uppercase tracking-wider text-neutral-600 mb-1">
+                      <label className="block text-[11px] font-bold uppercase tracking-wider text-neutral-500 mb-0.5">
                         House No. / Flat No. <span className="text-red-500 font-bold">*</span>
                       </label>
                       <input
@@ -1369,12 +1409,12 @@ export default function BookPage() {
                         value={addressDetails.houseNo}
                         onChange={(e) => handleAddressFieldChange('houseNo', e.target.value)}
                         placeholder="e.g. Flat 402, B-Wing, 4th Floor"
-                        className="w-full h-10 px-3.5 rounded-xl border border-gray-200 bg-[#F9F9F9] focus:bg-white focus:border-black text-xs sm:text-sm font-bold text-black placeholder:text-gray-400 focus:outline-hidden transition-all shadow-2xs"
+                        className="w-full bg-transparent border-b border-[#D5CDC2] focus:border-black py-2 text-sm sm:text-base font-semibold text-black placeholder:text-neutral-400 outline-none transition-colors"
                       />
                     </div>
 
                     <div>
-                      <label className="block text-[10px] font-black uppercase tracking-wider text-neutral-600 mb-1">
+                      <label className="block text-[11px] font-bold uppercase tracking-wider text-neutral-500 mb-0.5">
                         Apartment / Society / Building Name
                       </label>
                       <input
@@ -1382,12 +1422,12 @@ export default function BookPage() {
                         value={addressDetails.apartment}
                         onChange={(e) => handleAddressFieldChange('apartment', e.target.value)}
                         placeholder="e.g. Royal Palms Apartment / Green Valley"
-                        className="w-full h-10 px-3.5 rounded-xl border border-gray-200 bg-[#F9F9F9] focus:bg-white focus:border-black text-xs sm:text-sm font-bold text-black placeholder:text-gray-400 focus:outline-hidden transition-all shadow-2xs"
+                        className="w-full bg-transparent border-b border-[#D5CDC2] focus:border-black py-2 text-sm sm:text-base font-semibold text-black placeholder:text-neutral-400 outline-none transition-colors"
                       />
                     </div>
 
                     <div>
-                      <label className="block text-[10px] font-black uppercase tracking-wider text-neutral-600 mb-1">
+                      <label className="block text-[11px] font-bold uppercase tracking-wider text-neutral-500 mb-0.5">
                         Locality / Street / Area
                       </label>
                       <input
@@ -1395,12 +1435,12 @@ export default function BookPage() {
                         value={addressDetails.locality}
                         onChange={(e) => handleAddressFieldChange('locality', e.target.value)}
                         placeholder="e.g. Bandra West, Hill Road"
-                        className="w-full h-10 px-3.5 rounded-xl border border-gray-200 bg-[#F9F9F9] focus:bg-white focus:border-black text-xs sm:text-sm font-bold text-black placeholder:text-gray-400 focus:outline-hidden transition-all shadow-2xs"
+                        className="w-full bg-transparent border-b border-[#D5CDC2] focus:border-black py-2 text-sm sm:text-base font-semibold text-black placeholder:text-neutral-400 outline-none transition-colors"
                       />
                     </div>
 
                     <div>
-                      <label className="block text-[10px] font-black uppercase tracking-wider text-neutral-600 mb-1">
+                      <label className="block text-[11px] font-bold uppercase tracking-wider text-neutral-500 mb-0.5">
                         City / Region
                       </label>
                       <input
@@ -1408,21 +1448,93 @@ export default function BookPage() {
                         value={addressDetails.city}
                         onChange={(e) => handleAddressFieldChange('city', e.target.value)}
                         placeholder="e.g. Mumbai, MH"
-                        className="w-full h-10 px-3.5 rounded-xl border border-gray-200 bg-[#F9F9F9] focus:bg-white focus:border-black text-xs sm:text-sm font-bold text-black placeholder:text-gray-400 focus:outline-hidden transition-all shadow-2xs"
+                        className="w-full bg-transparent border-b border-[#D5CDC2] focus:border-black py-2 text-sm sm:text-base font-semibold text-black placeholder:text-neutral-400 outline-none transition-colors"
                       />
                     </div>
 
-                    <div>
-                      <label className="block text-[10px] font-black uppercase tracking-wider text-neutral-600 mb-1">
-                        Landmark / Instructions <span className="text-gray-400 font-normal">(Optional)</span>
-                      </label>
-                      <input
-                        type="text"
-                        value={addressDetails.landmark || ''}
-                        onChange={(e) => handleAddressFieldChange('landmark', e.target.value)}
-                        placeholder="e.g. Opposite Starbucks / Gate 2"
-                        className="w-full h-10 px-3.5 rounded-xl border border-gray-200 bg-[#F9F9F9] focus:bg-white focus:border-black text-xs sm:text-sm font-bold text-black placeholder:text-gray-400 focus:outline-hidden transition-all shadow-2xs"
-                      />
+                    {/* Click to Save Address Option */}
+                    <div className="pt-2 border-t border-[#E8E1D5] mt-3">
+                      {!isSaveAddressChecked ? (
+                        <button
+                          type="button"
+                          onClick={() => setIsSaveAddressChecked(true)}
+                          className="text-xs sm:text-sm font-bold text-black underline underline-offset-4 hover:text-neutral-600 transition-colors cursor-pointer inline-flex items-center gap-1.5 py-1"
+                        >
+                          <span>Click to Save Address</span>
+                        </button>
+                      ) : (
+                        <div className="animate-in fade-in slide-in-from-top-1 duration-200 space-y-2.5">
+                          <div className="flex items-center justify-between">
+                            <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-500">
+                              Save your address as
+                            </label>
+                            <button
+                              type="button"
+                              onClick={() => setIsSaveAddressChecked(false)}
+                              className="text-xs font-semibold text-neutral-400 hover:text-red-500 transition-colors cursor-pointer"
+                            >
+                              Don't save
+                            </button>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setAddressTag('home')}
+                              className={`flex-1 py-2 px-3 rounded-full border text-xs sm:text-sm font-bold transition-all cursor-pointer active:scale-95 flex items-center justify-center gap-1.5 ${
+                                addressTag === 'home'
+                                  ? 'bg-black text-white border-black shadow-xs'
+                                  : 'bg-transparent hover:bg-neutral-100 text-neutral-700 border-[#D5CDC2] hover:border-black'
+                              }`}
+                            >
+                              <Home size={13} className={addressTag === 'home' ? 'text-white' : 'text-neutral-500'} />
+                              <span>Home</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => setAddressTag('work')}
+                              className={`flex-1 py-2 px-3 rounded-full border text-xs sm:text-sm font-bold transition-all cursor-pointer active:scale-95 flex items-center justify-center gap-1.5 ${
+                                addressTag === 'work'
+                                  ? 'bg-black text-white border-black shadow-xs'
+                                  : 'bg-transparent hover:bg-neutral-100 text-neutral-700 border-[#D5CDC2] hover:border-black'
+                              }`}
+                            >
+                              <Briefcase size={13} className={addressTag === 'work' ? 'text-white' : 'text-neutral-500'} />
+                              <span>Work</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => setAddressTag('other')}
+                              className={`flex-1 py-2 px-3 rounded-full border text-xs sm:text-sm font-bold transition-all cursor-pointer active:scale-95 flex items-center justify-center gap-1.5 ${
+                                addressTag === 'other'
+                                  ? 'bg-black text-white border-black shadow-xs'
+                                  : 'bg-transparent hover:bg-neutral-100 text-neutral-700 border-[#D5CDC2] hover:border-black'
+                              }`}
+                            >
+                              <Tag size={13} className={addressTag === 'other' ? 'text-white' : 'text-neutral-500'} />
+                              <span>Other</span>
+                            </button>
+                          </div>
+
+                          {/* If Other is clicked, show "Please Specify" input */}
+                          {addressTag === 'other' && (
+                            <div className="pt-1 animate-in fade-in slide-in-from-top-1 duration-200">
+                              <label className="block text-[11px] font-bold uppercase tracking-wider text-neutral-500 mb-0.5">
+                                Please Specify
+                              </label>
+                              <input
+                                type="text"
+                                value={customAddressTag}
+                                onChange={(e) => setCustomAddressTag(e.target.value)}
+                                placeholder="e.g. Friend's Home, Mom's Place, Atelier"
+                                className="w-full bg-transparent border-b border-[#D5CDC2] focus:border-black py-2 text-sm font-semibold text-black placeholder:text-neutral-400 outline-none transition-colors"
+                                autoFocus
+                              />
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -1455,8 +1567,9 @@ export default function BookPage() {
                 origin={selectedCity}
                 className="w-full h-full"
                 showZoomControls={false}
-                disableNavigation={true}
-                isFixed={isLiveLocation || isLocationSaved}
+                disableNavigation={false}
+                isChoosing={isCardFlipped}
+                isFixed={!isCardFlipped}
                 fixedBoxMiles={5.0}
                 radiusMiles={5.0}
                 showUserPin={true}
@@ -1465,74 +1578,61 @@ export default function BookPage() {
                 userPinLabel={isLiveLocation ? 'You' : (selectedCity.split(',')[0] || 'Pinned Location')}
                 stores={nearbyStores}
                 selectedStoreId={selectedStore?.id}
+                searchQuery={mapSearchQuery}
+                onSearchTextChange={setMapSearchQuery}
+                onMapClick={() => {
+                  if (!isCardFlipped) {
+                    savedLocationRef.current = {
+                      coords: userGpsCoords,
+                      city: selectedCity,
+                      addressDetails: { ...addressDetails },
+                      isLiveLocation,
+                      isLocationSaved,
+                    }
+                    setIsCardFlipped(true)
+                    setIsLiveLocation(false)
+                    setIsLocationSaved(false)
+                  }
+                }}
                 onSelectStore={(st) => setSelectedStore(st)}
                 onStoresFound={(foundStores) => {
                   if (foundStores.length > 0 && (!selectedStore || !foundStores.some((s) => s.id === selectedStore.id))) {
                     setSelectedStore(foundStores[0])
                   }
                 }}
-                onPinLocationChange={(newCoords) => {
+                onPinLocationChange={async (newCoords) => {
+                  if (!isCardFlipped) {
+                    savedLocationRef.current = {
+                      coords: userGpsCoords,
+                      city: selectedCity,
+                      addressDetails: { ...addressDetails },
+                      isLiveLocation,
+                      isLocationSaved,
+                    }
+                    setIsCardFlipped(true)
+                  }
                   setUserGpsCoords(newCoords)
                   setIsLiveLocation(false)
                   setIsLocationSaved(false)
-                  setIsCardFlipped(true)
 
-                  // Check cache first
-                  const cached = getCachedReverseGeocode(newCoords.lat, newCoords.lng)
-                  if (cached) {
+                  try {
+                    const geo = await reverseGeocodeCoords(newCoords.lat, newCoords.lng)
+                    const newDetails = {
+                      houseNo: geo.houseNo || '',
+                      apartment: geo.apartment || '',
+                      locality: geo.locality || geo.displayLocality?.split(',')[0]?.trim() || '',
+                      city: geo.cityStateFormatted || selectedCity,
+                      landmark: addressDetails.landmark || '',
+                    }
+
                     setAddressDetails((prev) => ({
                       ...prev,
-                      houseNo: cached.houseNo || prev.houseNo,
-                      apartment: cached.apartment || prev.apartment,
-                      locality: cached.locality || prev.locality,
-                      city: cached.city || prev.city || selectedCity,
+                      ...newDetails,
                     }))
-                    setSelectedCity(cached.city)
-                    setStoredCity(cached.city, newCoords)
-                    return
-                  }
-
-                  if (typeof google !== 'undefined' && google.maps?.Geocoder) {
-                    try {
-                      const geocoder = new google.maps.Geocoder()
-                      geocoder.geocode({ location: newCoords }, (results, status) => {
-                        if (status === 'OK' && Array.isArray(results) && results.length > 0) {
-                          const parsed = parseGoogleAddressComponents(results, newCoords.lat, newCoords.lng)
-                          const newDetails = {
-                            houseNo: parsed.houseNo || '',
-                            apartment: parsed.apartment || '',
-                            locality: parsed.locality || '',
-                            city: parsed.city || selectedCity,
-                          }
-
-                          setAddressDetails((prev) => ({
-                            ...prev,
-                            houseNo: newDetails.houseNo || prev.houseNo,
-                            apartment: newDetails.apartment || prev.apartment,
-                            locality: newDetails.locality || prev.locality,
-                            city: newDetails.city || prev.city || selectedCity,
-                          }))
-
-                          const comps = results[0]?.address_components || []
-                          const formattedAddress = results[0]?.formatted_address || ''
-                          const accurate = resolveAccurateCityFromComponents(comps, newCoords.lat, newCoords.lng, formattedAddress)
-                          const formatted = accurate.fullFormatted
-
-                          setCachedReverseGeocode(newCoords.lat, newCoords.lng, {
-                            houseNo: newDetails.houseNo,
-                            apartment: newDetails.apartment,
-                            locality: newDetails.locality,
-                            city: formatted,
-                            formattedAddress: formatted,
-                          })
-
-                          setSelectedCity(formatted)
-                          setStoredCity(formatted, newCoords)
-                        }
-                      })
-                    } catch {}
-                  } else {
-                    setStoredCity(selectedCity, newCoords)
+                    setSelectedCity(geo.cityStateFormatted)
+                    setMapSearchQuery(geo.locality || geo.displayLocality?.split(',')[0]?.trim() || geo.cityStateFormatted || '')
+                  } catch (err) {
+                    console.warn('Pin location reverse geocode error:', err)
                   }
                 }}
               />
@@ -1547,20 +1647,101 @@ export default function BookPage() {
         isOpen={isCityModalOpen}
         onClose={() => setIsCityModalOpen(false)}
         selectedCity={selectedCity}
-        onSelectCity={(c, coords, isGps) => {
-          setSelectedCity(c)
-          const targetCoords = coords || getCityCoordinates(c)
+        onSelectCity={async (c, coords, isGps, placeInfo) => {
+          const isSaved = placeInfo?.isSavedAddress === true
+          const savedItem = placeInfo?.savedAddressItem
+
+          const targetCoords = coords || (savedItem ? { lat: savedItem.lat, lng: savedItem.lng } : getCityCoordinates(c))
           setUserGpsCoords(targetCoords)
           setIsLiveLocation(isGps === true)
-          setIsLocationSaved(isGps === true)
-          setStoredCity(c, targetCoords)
+          setIsLocationSaved(isGps === true || isSaved)
 
-          if (isGps === true) {
-            liveGpsCoordsRef.current = targetCoords
-            liveCityRef.current = c
+          if (isGps === true || isSaved) {
+            setMapSearchQuery('')
+          } else {
+            const searchTitle = placeInfo?.title || placeInfo?.fullName || c
+            setMapSearchQuery(searchTitle)
+          }
+
+          if (isGps === true || isSaved) {
+            if (isGps === true) {
+              liveGpsCoordsRef.current = targetCoords
+              liveCityRef.current = c
+            }
             setIsCardFlipped(false)
           } else {
+            if (!isCardFlipped) {
+              savedLocationRef.current = {
+                coords: userGpsCoords,
+                city: selectedCity,
+                addressDetails: { ...addressDetails },
+                isLiveLocation,
+                isLocationSaved,
+              }
+            }
             setIsCardFlipped(true)
+          }
+
+          if (isSaved && savedItem) {
+            const savedDetails: CustomerAddressDetails = {
+              houseNo: savedItem.details?.houseNo || '',
+              apartment: savedItem.details?.apartment || (savedItem.title && savedItem.title !== 'Saved Address' ? savedItem.title : '') || '',
+              locality: savedItem.details?.locality || savedItem.locality || '',
+              city: savedItem.details?.city || savedItem.city || c,
+              landmark: savedItem.details?.landmark || '',
+            }
+            const activeCity = savedDetails.city || c
+            setSelectedCity(activeCity)
+            setAddressDetails(savedDetails)
+            setStoredCity(activeCity, targetCoords)
+            savedLocationRef.current = {
+              coords: targetCoords,
+              city: activeCity,
+              addressDetails: savedDetails,
+              isLiveLocation: false,
+              isLocationSaved: true,
+            }
+          } else {
+            try {
+              const geo = await reverseGeocodeCoords(targetCoords.lat, targetCoords.lng)
+              const cleanCity = geo.cityStateFormatted || c
+              const newDetails: CustomerAddressDetails = {
+                houseNo: geo.houseNo || '',
+                apartment: geo.apartment || '',
+                locality: geo.locality || '',
+                city: cleanCity,
+                landmark: '',
+              }
+
+              setSelectedCity(cleanCity)
+              setAddressDetails(newDetails)
+
+              if (isGps === true) {
+                setStoredCity(cleanCity, targetCoords)
+                liveCityRef.current = cleanCity
+                liveAddressDetailsRef.current = newDetails
+                savedLocationRef.current = {
+                  coords: targetCoords,
+                  city: cleanCity,
+                  addressDetails: newDetails,
+                  isLiveLocation: true,
+                  isLocationSaved: false,
+                }
+              }
+            } catch {
+              setSelectedCity(c)
+              setAddressDetails((prev) => ({ ...prev, city: c }))
+              if (isGps === true) {
+                setStoredCity(c, targetCoords)
+                savedLocationRef.current = {
+                  coords: targetCoords,
+                  city: c,
+                  addressDetails: { houseNo: '', apartment: '', locality: '', city: c },
+                  isLiveLocation: true,
+                  isLocationSaved: false,
+                }
+              }
+            }
           }
 
           // Dynamically fetch tailors within 5.0 miles of the selected coordinates
@@ -1576,33 +1757,6 @@ export default function BookPage() {
               }
             })
             .catch((err) => console.warn('Fetch tailors error on location select:', err))
-
-          if (isGps !== true && typeof google !== 'undefined' && google.maps?.Geocoder) {
-            try {
-              const geocoder = new google.maps.Geocoder()
-              geocoder.geocode({ location: targetCoords }, (results, status) => {
-                if (status === 'OK' && Array.isArray(results) && results.length > 0) {
-                  const parsed = parseGoogleAddressComponents(results, targetCoords.lat, targetCoords.lng)
-                  setAddressDetails({
-                    houseNo: parsed.houseNo || '',
-                    apartment: parsed.apartment || '',
-                    locality: parsed.locality || '',
-                    city: parsed.city || c,
-                  })
-                } else {
-                  setAddressDetails((prev) => ({
-                    ...prev,
-                    city: c,
-                  }))
-                }
-              })
-            } catch {
-              setAddressDetails((prev) => ({
-                ...prev,
-                city: c,
-              }))
-            }
-          }
         }}
       />
 
