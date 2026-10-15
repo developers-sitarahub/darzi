@@ -42,17 +42,32 @@ export function ClientLayout({ children }: { children: React.ReactNode }) {
     if (clean === 'order') return 'order'
     if (clean === 'partner') return 'partner'
     if (clean === 'profile') return 'profile'
-    if (clean === 'contact') return 'contact'
-    if (clean === 'support') return 'support'
+    if (clean === 'contact' || clean === 'support') return 'contact'
     if (clean === 'privacy') return 'privacy'
+    if (clean === 'terms') return 'terms'
     return 'home'
   }
 
   const currentScreen = getScreenFromPath()
   const isCustomer = Boolean(user && user.role === 'CUSTOMER')
   const isStudioScreen = !isCustomer && (currentScreen === 'for-partners' || currentScreen === 'partner')
-  const isBookScreen = pathname === '/book' || pathname?.startsWith('/book')
-  const hideFooter = currentScreen === 'partner' || isBookScreen
+
+  // Remove footers completely from book, my orders, order details, and profile in customer site
+  const isCustomerNoFooterScreen =
+    currentScreen === 'book' ||
+    currentScreen === 'orders' ||
+    currentScreen === 'order' ||
+    currentScreen === 'profile' ||
+    pathname === '/book' ||
+    pathname?.startsWith('/book') ||
+    pathname === '/orders' ||
+    pathname?.startsWith('/orders') ||
+    pathname === '/order' ||
+    pathname?.startsWith('/order') ||
+    pathname === '/profile' ||
+    pathname?.startsWith('/profile')
+
+  const hideFooter = currentScreen === 'partner' || isCustomerNoFooterScreen
 
   // Route Guard: Logged-in customers must never access '/' (home) or partner/studio routes via URL or back navigation
   React.useEffect(() => {

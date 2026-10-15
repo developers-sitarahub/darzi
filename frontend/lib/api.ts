@@ -6,21 +6,92 @@ import {
   setRefreshToken,
   getAuthUser,
   setAuthUser,
+  getAuthRole,
   setAuthRole,
   clearAllAuth,
   clearUnnecessaryDataOnLogin,
   decodeJwtPayload,
+  hasActiveSession,
 } from './cookies'
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || ''
 
+let silentRefreshTimer: any = null
+
+export function cancelSilentRefresh(): void {
+  if (silentRefreshTimer) {
+    clearTimeout(silentRefreshTimer)
+    silentRefreshTimer = null
+  }
+}
+
+/**
+ * Automatically & silently refreshes access token before 15 minutes expire
+ * Keeps user session perpetually alive without interruption or logouts.
+ */
+export function scheduleSilentRefresh(token?: string | null): void {
+  if (typeof window === 'undefined') return
+
+  cancelSilentRefresh()
+
+  const currentToken = token || getAuthToken()
+  if (!currentToken) {
+    if (hasActiveSession()) {
+      silentRefreshTimer = setTimeout(() => {
+        refreshAccessToken().then((newToken) => {
+          if (newToken) scheduleSilentRefresh(newToken)
+        })
+      }, 1000)
+    }
+    return
+  }
+
+  try {
+    const payload = decodeJwtPayload(currentToken)
+    const exp = payload?.exp ? payload.exp * 1000 : null
+    let delay = 12 * 60 * 1000 // default 12 minutes
+
+    if (exp) {
+      const remaining = exp - Date.now()
+      // Proactively refresh 2.5 minutes before expiration (at ~12.5 minutes)
+      delay = remaining > 150000 ? remaining - 150000 : Math.max(10000, remaining / 2)
+    }
+
+    silentRefreshTimer = setTimeout(async () => {
+      try {
+        const freshToken = await refreshAccessToken()
+        if (freshToken) {
+          scheduleSilentRefresh(freshToken)
+        }
+      } catch (err) {
+        console.warn('[AUTH] Notice during silent auto-refresh:', err)
+      }
+    }, delay)
+  } catch (_) {
+    silentRefreshTimer = setTimeout(() => {
+      refreshAccessToken().then((t) => {
+        if (t) scheduleSilentRefresh(t)
+      })
+    }, 12 * 60 * 1000)
+  }
+}
+
 export function syncAuthCookies(token?: string | null, role?: string | null) {
-  if (token) setAuthToken(token)
+  if (token) {
+    setAuthToken(token)
+    scheduleSilentRefresh(token)
+  }
   if (role) setAuthRole(role)
 }
 
 export function clearAuthCookies() {
+  cancelSilentRefresh()
   clearAllAuth()
+}
+
+export function getAuthHeader(): Record<string, string> {
+  const token = getAuthToken()
+  return token ? { Authorization: `Bearer ${token}` } : {}
 }
 
 let isRefreshing = false
@@ -28,13 +99,6 @@ let refreshPromise: Promise<string | null> | null = null
 
 export async function refreshAccessToken(providedRefreshToken?: string): Promise<string | null> {
   const refreshToken = providedRefreshToken || getRefreshToken()
-  if (!refreshToken) {
-    return null
-  }
-
-  if (providedRefreshToken) {
-    setRefreshToken(providedRefreshToken)
-  }
 
   if (isRefreshing && refreshPromise && !providedRefreshToken) {
     return refreshPromise
@@ -47,11 +111,11 @@ export async function refreshAccessToken(providedRefreshToken?: string): Promise
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ refreshToken }),
+        body: JSON.stringify(refreshToken ? { refreshToken } : {}),
       })
 
       if (res.status === 401 || res.status === 403) {
-        // Explicitly rejected by auth server (token expired / revoked)
+        cancelSilentRefresh()
         clearAllAuth()
         return null
       }
@@ -65,11 +129,11 @@ export async function refreshAccessToken(providedRefreshToken?: string): Promise
       const newAt = data.accessToken || data.token
       if (newAt) {
         setAuthToken(newAt)
-        if (data.refreshToken) setRefreshToken(data.refreshToken)
         if (data.user) {
           setAuthUser(data.user)
           if (data.user.role) setAuthRole(data.user.role)
         }
+        scheduleSilentRefresh(newAt)
         return newAt
       }
 
@@ -90,11 +154,13 @@ export async function getValidAccessToken(): Promise<string | null> {
   let token = getAuthToken()
   if (token) return token
 
-  // Access token expired in cookie, attempt refresh with 15-day refresh token
-  const refreshToken = getRefreshToken()
-  if (refreshToken) {
+  // If user has an active session flag, cached user, or HttpOnly cookie, automatically refresh
+  if (hasActiveSession() || getAuthUser() || getAuthRole() || getRefreshToken()) {
     token = await refreshAccessToken()
-    if (token) return token
+    if (token) {
+      scheduleSilentRefresh(token)
+      return token
+    }
   }
 
   return null
@@ -110,8 +176,8 @@ export async function fetchWithAutoRefresh(url: string, options: RequestInit = {
 
   let res = await fetch(url, { credentials: 'include', ...options, headers })
 
-  // If 401 Unauthorized, attempt token refresh once and retry request
-  if (res.status === 401 && getRefreshToken()) {
+  // If 401 Unauthorized, attempt token refresh once via HttpOnly cookie and retry request
+  if (res.status === 401) {
     const newToken = await refreshAccessToken()
     if (newToken) {
       headers.set('Authorization', `Bearer ${newToken}`)
@@ -138,6 +204,7 @@ export async function logoutUser(): Promise<void> {
   } catch (err) {
     console.warn('Backend logout request notice:', err)
   } finally {
+    cancelSilentRefresh()
     clearAllAuth()
   }
 }
@@ -222,6 +289,60 @@ export async function sendOtp(phone: string, forceResend: boolean = false): Prom
     if (err.message && (err.message.includes('Failed to fetch') || err.message.includes('NetworkError') || err.message.includes('fetch failed'))) {
       throw new Error('Unable to connect to authentication server. Please ensure the backend is running.')
     }
+    throw err
+  }
+}
+
+// Send OTP to email address (valid for 10 minutes)
+export async function sendEmailOtp(email: string): Promise<{ success: boolean; message: string }> {
+  try {
+    const res = await fetch(`${API_BASE}/auth/send-email-otp`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email }),
+    })
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}))
+      throw new Error(err.error || 'Failed to send email verification code')
+    }
+    return await res.json()
+  } catch (err: any) {
+    throw err
+  }
+}
+
+// Verify Email OTP
+export async function verifyEmailOtp(email: string, otp: string): Promise<{ success: boolean; verified: boolean; message: string }> {
+  try {
+    const res = await fetch(`${API_BASE}/auth/verify-email-otp`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, otp }),
+    })
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}))
+      throw new Error(err.error || 'Invalid or expired verification code')
+    }
+    return await res.json()
+  } catch (err: any) {
+    throw err
+  }
+}
+
+// Pre-signup pure phone OTP verification
+export async function verifyPhoneOtp(phone: string, otp: string): Promise<{ success: boolean; verified: boolean; message: string }> {
+  try {
+    const res = await fetch(`${API_BASE}/auth/verify-phone-otp`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone, otp }),
+    })
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}))
+      throw new Error(err.error || 'Invalid or expired verification code')
+    }
+    return await res.json()
+  } catch (err: any) {
     throw err
   }
 }
@@ -379,9 +500,10 @@ export async function checkEmailExists(email: string, role: string = 'STUDIO'): 
 
 export async function signUpUser(data: {
   tempSignupId?: string
-  name: string
+  name?: string
   email?: string
   phone?: string
+  password?: string
   address?: string
   postcode?: string
   role?: 'CUSTOMER' | 'STUDIO' | 'ADMIN'
@@ -429,6 +551,7 @@ export async function loginUser(data: {
   email?: string
   phone?: string
   identifier?: string
+  password?: string
   role?: 'CUSTOMER' | 'STUDIO' | 'ADMIN'
 }): Promise<{ token: string; accessToken?: string; refreshToken?: string; authCode?: string; user: User; needsPhone?: boolean }> {
   try {
@@ -627,11 +750,10 @@ export async function createOrder(orderData: any): Promise<{ success: boolean; o
 export async function sendOrderPinEmail(orderId: string, email?: string): Promise<{ success: boolean; message?: string; email?: string; error?: string }> {
   try {
     const cleanId = orderId ? encodeURIComponent(orderId.replace(/^#/, '').trim()) : ''
-    const res = await fetch(`${API_BASE}/orders/${cleanId}/send-otp-email`, {
+    const res = await fetchWithAutoRefresh(`${API_BASE}/orders/${cleanId}/send-otp-email`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        ...(getAuthHeader() || {}),
       },
       body: JSON.stringify({ email }),
     })

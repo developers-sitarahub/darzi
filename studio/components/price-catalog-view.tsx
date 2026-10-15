@@ -1,10 +1,9 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import {
   Tag,
   Search,
-  Plus,
   Trash2,
   Check,
   CheckCircle2,
@@ -14,7 +13,8 @@ import {
   RefreshCw,
   ChevronDown,
   ChevronUp,
-  FolderPlus,
+  ChevronLeft,
+  ChevronRight,
   Coins,
   X,
 } from 'lucide-react'
@@ -91,6 +91,7 @@ export function PriceCatalogView({
   const [baseCategories, setBaseCategories] = useState<BaseServiceCategory[]>([])
   const [catalogItems, setCatalogItems] = useState<StudioCatalogItemData[]>([])
   const [customCategories, setCustomCategories] = useState<{ id: string; name: string }[]>([])
+  const originalSnapshotRef = useRef<string>('')
 
   // Workshop Currency
   const [selectedCurrency, setSelectedCurrency] = useState('GBP')
@@ -100,6 +101,31 @@ export function PriceCatalogView({
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState('ALL')
   const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({})
+  const pillsContainerRef = useRef<HTMLDivElement>(null)
+
+  const scrollPills = (direction: 'left' | 'right') => {
+    if (pillsContainerRef.current) {
+      const scrollAmount = 220
+      pillsContainerRef.current.scrollBy({
+        left: direction === 'left' ? -scrollAmount : scrollAmount,
+        behavior: 'smooth',
+      })
+    }
+  }
+
+  // Consistent snapshot serializer: only compares user-editable attributes
+  const getCatalogSnapshot = (items: StudioCatalogItemData[], currency: string) => {
+    const simplified = items.map((i) => ({
+      catId: String(i.categoryId || ''),
+      name: String(i.name || '').trim().toLowerCase(),
+      enabled: Boolean(i.enabled),
+      price: Number(i.price) || 0,
+      days: Number(i.turnaroundDays) || 2,
+    }))
+    // Sort deterministically
+    simplified.sort((a, b) => (a.catId + a.name).localeCompare(b.catId + b.name))
+    return JSON.stringify({ currency: String(currency || '').trim(), items: simplified })
+  }
 
   // Add Custom Service Form Modal
   const [showAddServiceModal, setShowAddServiceModal] = useState(false)
@@ -143,7 +169,9 @@ export function PriceCatalogView({
           setSelectedCurrencySymbol((user as any).currencySymbol || '£')
         }
 
+        let loadedItems: StudioCatalogItemData[] = []
         if (data.items && data.items.length > 0) {
+          loadedItems = data.items
           setCatalogItems(data.items)
 
           // Extract custom categories
@@ -158,7 +186,7 @@ export function PriceCatalogView({
           }
           setCustomCategories(customs)
         } else {
-          // Do not prefetch default prices until tailor explicitly requests them via "Use Darzi Rates"
+          // Do not prefetch default prices until tailor explicitly requests them via "Use Raffu Rates"
           const initialItems: StudioCatalogItemData[] = []
           for (const cat of data.baseCategories || []) {
             for (const svc of cat.services) {
@@ -179,8 +207,13 @@ export function PriceCatalogView({
               })
             }
           }
+          loadedItems = initialItems
           setCatalogItems(initialItems)
         }
+
+        // Take initial snapshot to track changes
+        const currentCurr = data.currency || (user as any)?.currency || 'GBP'
+        originalSnapshotRef.current = getCatalogSnapshot(loadedItems, currentCurr)
 
         // Expand all categories initially
         const initExpanded: Record<string, boolean> = {}
@@ -256,6 +289,13 @@ export function PriceCatalogView({
   }, [catalogItems])
 
   const isCatalogValid = enabledServicesCount > 0
+
+  // Check if current items or currency have changed compared to original snapshot
+  const hasChanges = useMemo(() => {
+    if (!originalSnapshotRef.current) return false
+    const currentSnapshot = getCatalogSnapshot(catalogItems, selectedCurrency)
+    return currentSnapshot !== originalSnapshotRef.current
+  }, [catalogItems, selectedCurrency])
 
   const toggleCategoryExpand = (catId: string) => {
     setExpandedCategories((prev) => ({
@@ -425,8 +465,13 @@ export function PriceCatalogView({
 
       if (res.success) {
         toast.success('Price catalog saved successfully.')
+        const savedItems = (res.items && res.items.length > 0) ? res.items : catalogItems
+        originalSnapshotRef.current = getCatalogSnapshot(savedItems, selectedCurrency)
+        if (res.items && res.items.length > 0) {
+          setCatalogItems(res.items)
+        }
         if (onSaved) {
-          onSaved(res.items || catalogItems, selectedCurrency, selectedCurrencySymbol)
+          onSaved(savedItems, selectedCurrency, selectedCurrencySymbol)
         }
       } else {
         throw new Error(res.message || 'Failed to save price catalog')
@@ -501,32 +546,7 @@ export function PriceCatalogView({
             type="button"
             className="py-1.5 px-3 rounded-xl border border-[#9E593B]/40 bg-[#FFF9F5] hover:bg-[#FBECE3] text-xs font-bold text-[#9E593B] shadow-2xs transition-colors cursor-pointer flex items-center gap-1 active:scale-95"
           >
-            <span>⚡ Use Darzi Rates</span>
-          </button>
-
-          {/* Add Category */}
-          <button
-            onClick={() => setShowAddCategoryModal(true)}
-            type="button"
-            className="py-1.5 px-3 rounded-xl border border-[#E0D5C5] bg-white hover:bg-[#FAF8F5] text-xs font-medium text-[#4A4B4D] transition-colors cursor-pointer flex items-center gap-1"
-          >
-            <FolderPlus className="w-3.5 h-3.5 text-[#7A7E85]" />
-            <span>+ Category</span>
-          </button>
-
-          {/* Add Service */}
-          <button
-            onClick={() => {
-              if (allCategories.length > 0) {
-                setTargetCategoryIdForAdd(allCategories[0].id)
-                setShowAddServiceModal(true)
-              }
-            }}
-            type="button"
-            className="py-1.5 px-3.5 rounded-xl bg-[#9E593B] hover:bg-[#854529] text-white text-xs font-bold transition-colors cursor-pointer shadow-xs flex items-center gap-1 active:scale-95"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            <span>+ Service</span>
+            <span>⚡ Use Raffu Rates</span>
           </button>
         </div>
       </div>
@@ -540,7 +560,7 @@ export function PriceCatalogView({
               Your studio is currently offline until your price catalog is configured and saved.
             </p>
             <p className="text-[#92400E] mt-0.5">
-              Enter your tailor prices below or click <strong>&quot;⚡ Use Darzi Rates&quot;</strong> above to auto-fill with standard market prices, then click <strong>&quot;Save Price Catalog&quot;</strong>.
+              Enter your tailor prices below or click <strong>&quot;⚡ Use Raffu Rates&quot;</strong> above to auto-fill with standard market prices, then click <strong>&quot;Save Price Catalog&quot;</strong>.
             </p>
           </div>
         </div>
@@ -567,31 +587,57 @@ export function PriceCatalogView({
           )}
         </div>
 
-        {/* Filter Pills */}
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0 scrollbar-none">
+        {/* Filter Pills with Side Scroller */}
+        <div className="relative flex items-center min-w-0 max-w-full sm:max-w-2xl lg:max-w-3xl">
+          {/* Scroll Left Button */}
           <button
-            onClick={() => setSelectedCategoryFilter('ALL')}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-colors cursor-pointer ${
-              selectedCategoryFilter === 'ALL'
-                ? 'bg-[#9E593B] text-white shadow-xs'
-                : 'bg-white border border-[#E8E1D5] text-[#5A4B41] hover:bg-[#FAF8F5]'
-            }`}
+            type="button"
+            onClick={() => scrollPills('left')}
+            className="p-1 rounded-lg border border-[#E8E1D5] bg-white hover:bg-[#FAF8F5] text-[#5A4B41] shadow-2xs mr-1 shrink-0 cursor-pointer transition-colors"
+            title="Scroll Left"
           >
-            All ({allCategories.length})
+            <ChevronLeft className="w-3.5 h-3.5" />
           </button>
-          {allCategories.map((cat) => (
+
+          {/* Scrollable Container */}
+          <div
+            ref={pillsContainerRef}
+            className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0 scroll-smooth scrollbar-thin scrollbar-thumb-stone-300 scrollbar-track-transparent flex-1"
+          >
             <button
-              key={cat.id}
-              onClick={() => setSelectedCategoryFilter(cat.id)}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-colors cursor-pointer ${
-                selectedCategoryFilter === cat.id
+              onClick={() => setSelectedCategoryFilter('ALL')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-colors cursor-pointer shrink-0 ${
+                selectedCategoryFilter === 'ALL'
                   ? 'bg-[#9E593B] text-white shadow-xs'
                   : 'bg-white border border-[#E8E1D5] text-[#5A4B41] hover:bg-[#FAF8F5]'
               }`}
             >
-              {cat.name}
+              All ({allCategories.length})
             </button>
-          ))}
+            {allCategories.map((cat) => (
+              <button
+                key={cat.id}
+                onClick={() => setSelectedCategoryFilter(cat.id)}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-colors cursor-pointer shrink-0 ${
+                  selectedCategoryFilter === cat.id
+                    ? 'bg-[#9E593B] text-white shadow-xs'
+                    : 'bg-white border border-[#E8E1D5] text-[#5A4B41] hover:bg-[#FAF8F5]'
+                }`}
+              >
+                {cat.name}
+              </button>
+            ))}
+          </div>
+
+          {/* Scroll Right Button */}
+          <button
+            type="button"
+            onClick={() => scrollPills('right')}
+            className="p-1 rounded-lg border border-[#E8E1D5] bg-white hover:bg-[#FAF8F5] text-[#5A4B41] shadow-2xs ml-1 shrink-0 cursor-pointer transition-colors"
+            title="Scroll Right"
+          >
+            <ChevronRight className="w-3.5 h-3.5" />
+          </button>
         </div>
       </div>
 
@@ -621,7 +667,9 @@ export function PriceCatalogView({
                 {/* Category Header */}
                 <div
                   onClick={() => toggleCategoryExpand(category.id)}
-                  className="px-4.5 py-3.5 bg-[#F8F4EE]/90 hover:bg-[#F5EFE6] flex items-center justify-between cursor-pointer border-b border-[#E8E1D5]/70 select-none transition-colors"
+                  className={`px-4.5 py-3.5 bg-[#F8F4EE]/90 hover:bg-[#F5EFE6] flex items-center justify-between cursor-pointer select-none transition-colors ${
+                    isExpanded ? 'border-b border-[#E8E1D5]/70' : ''
+                  }`}
                 >
                   <div className="flex items-center gap-2.5 min-w-0">
                     <div className="w-6 h-6 rounded-lg bg-[#FAF1EC] text-[#9E593B] flex items-center justify-center shrink-0">
@@ -640,21 +688,8 @@ export function PriceCatalogView({
                     </span>
                   </div>
 
-                  <div className="flex items-center gap-2 shrink-0">
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        setTargetCategoryIdForAdd(category.id)
-                        setShowAddServiceModal(true)
-                      }}
-                      className="text-xs text-[#9E593B] font-bold px-2 py-0.5 rounded bg-[#9E593B]/10 hover:bg-[#9E593B]/15 transition-colors cursor-pointer"
-                    >
-                      + Add
-                    </button>
-                    <div className="text-[#7A7E85]">
-                      {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                    </div>
+                  <div className="text-[#7A7E85]">
+                    {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                   </div>
                 </div>
 
@@ -792,15 +827,33 @@ export function PriceCatalogView({
 
       {/* Floating Save Footer */}
       <div className="sticky bottom-3 z-20 bg-white/95 backdrop-blur-md rounded-2xl border border-[#E8E1D5] shadow-lg p-3.5 flex flex-col sm:flex-row items-center justify-between gap-3">
-        <div className="flex items-center gap-2 text-xs text-[#5A5D64]">
+        <div className="flex items-center gap-2.5 text-xs text-[#5A5D64]">
           <CheckCircle2
-            className={`w-4 h-4 ${isCatalogValid ? 'text-emerald-600' : 'text-amber-500'}`}
+            className={`w-4 h-4 ${
+              hasChanges
+                ? 'text-[#9E593B]'
+                : isCatalogValid
+                ? 'text-emerald-600'
+                : 'text-amber-500'
+            }`}
           />
-          <span>
-            <strong>{enabledServicesCount} services active</strong> in{' '}
-            <span className="font-bold text-[#0F1115]">{selectedCurrency}</span> across{' '}
-            {allCategories.length} categories.
-          </span>
+          <div className="flex flex-wrap items-center gap-2">
+            <span>
+              <strong>{enabledServicesCount} services active</strong> in{' '}
+              <span className="font-bold text-[#0F1115]">{selectedCurrency}</span> across{' '}
+              {allCategories.length} categories.
+            </span>
+            {hasChanges ? (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#FFF7F2] text-[#9E593B] border border-[#9E593B]/20">
+                <span className="w-1.5 h-1.5 rounded-full bg-[#9E593B] animate-pulse" />
+                Unsaved Changes
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
+                All saved
+              </span>
+            )}
+          </div>
         </div>
 
         <div className="flex items-center gap-2 w-full sm:w-auto">
@@ -814,28 +867,30 @@ export function PriceCatalogView({
             </button>
           )}
 
-          <button
-            onClick={handleSaveCatalog}
-            disabled={saving || !isCatalogValid}
-            type="button"
-            className={`flex-1 sm:flex-initial py-2 px-5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-sm ${
-              isCatalogValid
-                ? 'bg-[#9E593B] hover:bg-[#854529] text-white shadow-[#9E593B]/20'
-                : 'bg-neutral-200 text-[#7A7E85] cursor-not-allowed'
-            }`}
-          >
-            {saving ? (
-              <>
-                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                <span>Saving…</span>
-              </>
-            ) : (
-              <>
-                <Check className="w-3.5 h-3.5" />
-                <span>Save Catalog</span>
-              </>
-            )}
-          </button>
+          {hasChanges && (
+            <button
+              onClick={handleSaveCatalog}
+              disabled={saving || !isCatalogValid}
+              type="button"
+              className={`flex-1 sm:flex-initial py-2 px-5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-md animate-in fade-in slide-in-from-bottom-2 duration-200 ${
+                isCatalogValid
+                  ? 'bg-[#9E593B] hover:bg-[#854529] text-white shadow-[#9E593B]/25 hover:shadow-lg'
+                  : 'bg-neutral-200 text-[#7A7E85] cursor-not-allowed'
+              }`}
+            >
+              {saving ? (
+                <>
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                  <span>Saving…</span>
+                </>
+              ) : (
+                <>
+                  <Check className="w-3.5 h-3.5" />
+                  <span>Save Catalog</span>
+                </>
+              )}
+            </button>
+          )}
         </div>
       </div>
 

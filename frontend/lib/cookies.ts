@@ -141,8 +141,10 @@ export function getRefreshToken(): string | null {
 }
 
 export function setRefreshToken(token: string): void {
-  // 15 days
-  setCookie('tg_refresh_token', token, 15, '/')
+  // Server sets tg_refresh_token strictly as an HttpOnly cookie.
+  // Purge any client-accessible duplicate cookie to prevent JavaScript exposure
+  deleteCookie('tg_refresh_token', '/')
+  deleteCookie('refreshToken', '/')
 }
 
 export function removeRefreshToken(): void {
@@ -177,6 +179,11 @@ export function decodeJwtPayload<T = any>(token: string | null | undefined): T |
   }
 }
 
+export function hasActiveSession(): boolean {
+  if (typeof document === 'undefined') return false
+  return Boolean(getCookie('tg_logged_in') || getAuthToken() || getRefreshToken())
+}
+
 export function getAuthRole(): string | null {
   // 1. Primary Source of Truth: Decode directly from Access Token
   const token = getAuthToken()
@@ -190,6 +197,17 @@ export function getAuthRole(): string | null {
   if (refreshToken) {
     const payload = decodeJwtPayload(refreshToken)
     if (payload?.role) return payload.role
+  }
+
+  // 3. Fallback to session cache if session is active
+  if (typeof window !== 'undefined' && hasActiveSession()) {
+    try {
+      const cached = sessionStorage.getItem('tg_user_session')
+      if (cached) {
+        const u = JSON.parse(cached)
+        if (u?.role) return u.role
+      }
+    } catch {}
   }
 
   return null
@@ -236,21 +254,83 @@ export function getAuthUser<T = any>(): T | null {
     }
   }
 
+  // 3. Fallback to session cache if session is active
+  if (typeof window !== 'undefined' && hasActiveSession()) {
+    try {
+      const cached = sessionStorage.getItem('tg_user_session')
+      if (cached) {
+        return JSON.parse(cached) as T
+      }
+    } catch {}
+  }
+
   return null
 }
 
 export function setAuthUser(user: any): void {
   // User credentials and identity are fully managed via HTTP cookies and JWT tokens.
-  // Legacy tg_user cookie is cleaned up.
   deleteCookie('tg_user', '/')
+  if (typeof window !== 'undefined' && user) {
+    try {
+      sessionStorage.setItem('tg_user_session', JSON.stringify(user))
+    } catch {}
+  }
 }
 
 export function removeAuthUser(): void {
   deleteCookie('tg_user', '/')
+  if (typeof window !== 'undefined') {
+    try {
+      sessionStorage.removeItem('tg_user_session')
+    } catch {}
+  }
+}
+
+export function clearLegacyOrderCookies(): void {
+  if (typeof document === 'undefined') return
+  try {
+    const rawCookies = document.cookie.split(';')
+    for (let i = 0; i < rawCookies.length; i++) {
+      const cookie = rawCookies[i].trim()
+      if (!cookie) continue
+      const eqIdx = cookie.indexOf('=')
+      const name = eqIdx > -1 ? cookie.substring(0, eqIdx).trim() : cookie
+      let decodedName = name
+      try {
+        decodedName = decodeURIComponent(name)
+      } catch {}
+      if (
+        name.startsWith('tg_order_') ||
+        name.startsWith('tg_order_notes_') ||
+        name === 'tg_latest_order' ||
+        name === 'tg_book_session' ||
+        name === 'tg_prefilled_garment' ||
+        name === 'tg_prefilled_service' ||
+        name === 'tg_measurement_draft' ||
+        decodedName.startsWith('tg_order_') ||
+        decodedName.startsWith('tg_order_notes_') ||
+        decodedName === 'tg_latest_order' ||
+        decodedName === 'tg_book_session' ||
+        decodedName === 'tg_prefilled_garment' ||
+        decodedName === 'tg_prefilled_service' ||
+        decodedName === 'tg_measurement_draft'
+      ) {
+        deleteCookie(name, '/')
+        deleteCookie(name, '')
+        deleteCookie(decodedName, '/')
+        deleteCookie(decodedName, '')
+        document.cookie = `${name}=; path=/; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT`
+        document.cookie = `${decodedName}=; path=/; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT`
+      }
+    }
+  } catch (e) {
+    console.warn('Error clearing legacy order cookies:', e)
+  }
 }
 
 export function clearUnnecessaryDataOnLogin(): void {
   clearAllCookies()
+  clearLegacyOrderCookies()
 }
 
 export function clearAllAuth(): void {
@@ -258,7 +338,10 @@ export function clearAllAuth(): void {
   removeRefreshToken()
   removeAuthUser()
   removeAuthRole()
+  deleteCookie('tg_logged_in', '/')
+  deleteCookie('tg_logged_in', '')
   clearAllCookies()
+  clearLegacyOrderCookies()
   if (typeof window !== 'undefined') {
     try {
       localStorage.clear()
@@ -270,6 +353,7 @@ export function clearAllAuth(): void {
 }
 
 // ================= STORAGE COOKIE HELPERS =================
+// Note: Orders, prefilled choices, and drafts must NEVER be stored in cookies.
 
 export function getStorageCookie(key: string, defaultValue: string = ''): string {
   const cookieVal = getCookie(key)
@@ -277,10 +361,22 @@ export function getStorageCookie(key: string, defaultValue: string = ''): string
 }
 
 export function setStorageCookie(key: string, value: string): void {
+  // Prevent storing order payloads or UI state in cookies
+  if (
+    key.startsWith('tg_order_') ||
+    key === 'tg_latest_order' ||
+    key === 'tg_prefilled_garment' ||
+    key === 'tg_prefilled_service' ||
+    key === 'tg_measurement_draft'
+  ) {
+    deleteCookie(key, '/')
+    return
+  }
   setCookie(key, value, 30, '/')
 }
 
 export function removeStorageCookie(key: string): void {
   deleteCookie(key, '/')
 }
+
 

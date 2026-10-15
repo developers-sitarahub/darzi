@@ -141,8 +141,10 @@ export function getRefreshToken(): string | null {
 }
 
 export function setRefreshToken(token: string): void {
-  // 15 days
-  setCookie('tg_refresh_token', token, 15, '/')
+  // Server sets tg_refresh_token strictly as an HttpOnly cookie.
+  // Purge any client-accessible duplicate cookie to prevent JavaScript exposure
+  deleteCookie('tg_refresh_token', '/')
+  deleteCookie('refreshToken', '/')
 }
 
 export function removeRefreshToken(): void {
@@ -177,6 +179,11 @@ export function decodeJwtPayload<T = any>(token: string | null | undefined): T |
   }
 }
 
+export function hasActiveSession(): boolean {
+  if (typeof document === 'undefined') return false
+  return Boolean(getCookie('tg_logged_in') || getAuthToken() || getRefreshToken())
+}
+
 export function getAuthRole(): string | null {
   // 1. Primary Source of Truth: Decode directly from Access Token
   const token = getAuthToken()
@@ -190,6 +197,17 @@ export function getAuthRole(): string | null {
   if (refreshToken) {
     const payload = decodeJwtPayload(refreshToken)
     if (payload?.role) return payload.role
+  }
+
+  // 3. Fallback to session cache if session is active
+  if (typeof window !== 'undefined' && hasActiveSession()) {
+    try {
+      const cached = sessionStorage.getItem('tg_studio_user_session')
+      if (cached) {
+        const u = JSON.parse(cached)
+        if (u?.role) return u.role
+      }
+    } catch {}
   }
 
   return null
@@ -236,17 +254,36 @@ export function getAuthUser<T = any>(): T | null {
     }
   }
 
+  // 3. Fallback to session cache if session is active
+  if (typeof window !== 'undefined' && hasActiveSession()) {
+    try {
+      const cached = sessionStorage.getItem('tg_studio_user_session')
+      if (cached) {
+        return JSON.parse(cached) as T
+      }
+    } catch {}
+  }
+
   return null
 }
 
 export function setAuthUser(user: any): void {
   // User credentials and identity are fully managed via HTTP cookies and JWT tokens.
-  // Legacy tg_user cookie is cleaned up.
   deleteCookie('tg_user', '/')
+  if (typeof window !== 'undefined' && user) {
+    try {
+      sessionStorage.setItem('tg_studio_user_session', JSON.stringify(user))
+    } catch {}
+  }
 }
 
 export function removeAuthUser(): void {
   deleteCookie('tg_user', '/')
+  if (typeof window !== 'undefined') {
+    try {
+      sessionStorage.removeItem('tg_studio_user_session')
+    } catch {}
+  }
 }
 
 export function clearUnnecessaryDataOnLogin(): void {
@@ -258,6 +295,8 @@ export function clearAllAuth(): void {
   removeRefreshToken()
   removeAuthUser()
   removeAuthRole()
+  deleteCookie('tg_logged_in', '/')
+  deleteCookie('tg_logged_in', '')
   clearAllCookies()
   if (typeof window !== 'undefined') {
     try {

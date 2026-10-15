@@ -60,8 +60,10 @@ import {
   loginSuperAdmin,
   checkSuperAdminSession,
   getAdminToken,
+  getAdminUser,
   logoutSuperAdmin,
 } from '@/lib/api'
+import { RaffuLogo } from '@/components/raffu-logo'
 import { OverviewTab } from '@/components/overview-tab'
 import { CustomersTab } from '@/components/customers-tab'
 import { StudiosTab } from '@/components/studios-tab'
@@ -92,14 +94,27 @@ export default function SuperAdminPage({ initialTab = 'overview' }: SuperAdminPa
   const [activeTab, setActiveTab] = useState<AdminTab>(initialTab)
 
   const handleTabSwitch = (tab: AdminTab) => {
+    if (tab === activeTab) return
     setActiveTab(tab)
     const targetPath = tab === 'overview' ? '/' : `/${tab}`
-    if (pathname !== targetPath) {
-      router.push(targetPath)
+    if (typeof window !== 'undefined' && window.location.pathname !== targetPath) {
+      window.history.pushState(null, '', targetPath)
     }
   }
 
   // Sync activeTab when navigating via browser back/forward buttons
+  useEffect(() => {
+    const handlePopState = () => {
+      const p = window.location.pathname
+      if (p === '/customers') setActiveTab('customers')
+      else if (p === '/studios') setActiveTab('studios')
+      else if (p === '/orders') setActiveTab('orders')
+      else if (p === '/') setActiveTab('overview')
+    }
+    window.addEventListener('popstate', handlePopState)
+    return () => window.removeEventListener('popstate', handlePopState)
+  }, [])
+
   useEffect(() => {
     if (pathname === '/customers') setActiveTab('customers')
     else if (pathname === '/studios') setActiveTab('studios')
@@ -110,10 +125,43 @@ export default function SuperAdminPage({ initialTab = 'overview' }: SuperAdminPa
   const [loading, setLoading] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
 
-  const [overview, setOverview] = useState<any>(null)
-  const [customers, setCustomers] = useState<any[]>([])
-  const [studios, setStudios] = useState<any[]>([])
-  const [orders, setOrders] = useState<any[]>([])
+  // Shared in-memory cache to prevent layout fluctuation when switching routes
+  const [overview, setOverview] = useState<any>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const cached = sessionStorage.getItem('admin_cache_overview')
+        return cached ? JSON.parse(cached) : null
+      } catch { return null }
+    }
+    return null
+  })
+  const [customers, setCustomers] = useState<any[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const cached = sessionStorage.getItem('admin_cache_customers')
+        return cached ? JSON.parse(cached) : []
+      } catch { return [] }
+    }
+    return []
+  })
+  const [studios, setStudios] = useState<any[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const cached = sessionStorage.getItem('admin_cache_studios')
+        return cached ? JSON.parse(cached) : []
+      } catch { return [] }
+    }
+    return []
+  })
+  const [orders, setOrders] = useState<any[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const cached = sessionStorage.getItem('admin_cache_orders')
+        return cached ? JSON.parse(cached) : []
+      } catch { return [] }
+    }
+    return []
+  })
 
   // Search & Filter states
   const [globalSearchQuery, setGlobalSearchQuery] = useState('')
@@ -157,10 +205,22 @@ export default function SuperAdminPage({ initialTab = 'overview' }: SuperAdminPa
         fetchAdminOrders(),
       ])
 
-      if (overviewData) setOverview(overviewData)
-      if (customersData) setCustomers(customersData)
-      if (studiosData) setStudios(studiosData)
-      if (ordersData) setOrders(ordersData)
+      if (overviewData) {
+        setOverview(overviewData)
+        try { sessionStorage.setItem('admin_cache_overview', JSON.stringify(overviewData)) } catch {}
+      }
+      if (customersData) {
+        setCustomers(customersData)
+        try { sessionStorage.setItem('admin_cache_customers', JSON.stringify(customersData)) } catch {}
+      }
+      if (studiosData) {
+        setStudios(studiosData)
+        try { sessionStorage.setItem('admin_cache_studios', JSON.stringify(studiosData)) } catch {}
+      }
+      if (ordersData) {
+        setOrders(ordersData)
+        try { sessionStorage.setItem('admin_cache_orders', JSON.stringify(ordersData)) } catch {}
+      }
     } catch (err) {
       console.error('Failed to load admin data:', err)
       toast.error('Failed to connect to backend service.')
@@ -183,25 +243,40 @@ export default function SuperAdminPage({ initialTab = 'overview' }: SuperAdminPa
       return
     }
 
-    const safetyTimer = setTimeout(() => {
+    // Listen for unauthorized events to automatically reset admin session
+    const onUnauthorized = () => {
       if (isMounted) {
+        setAdminUser(null)
         setAuthChecking(false)
         if (pathname !== '/') router.replace('/')
       }
-    }, 2000)
+    }
+    window.addEventListener('admin:unauthorized', onUnauthorized)
+
+    const safetyTimer = setTimeout(() => {
+      if (isMounted) {
+        setAuthChecking(false)
+        if (!getAdminToken() && pathname !== '/') router.replace('/')
+      }
+    }, 2500)
 
     async function initSession() {
       try {
         const user = await checkSuperAdminSession()
         if (isMounted && user && user.role === 'ADMIN') {
           setAdminUser(user)
+          // Always load foundational data silently in background
           loadAllData(true)
         } else if (isMounted) {
+          setAdminUser(null)
           if (pathname !== '/') router.replace('/')
         }
       } catch (err) {
         console.warn('Session check notice:', err)
-        if (isMounted && pathname !== '/') router.replace('/')
+        if (isMounted) {
+          setAdminUser(null)
+          if (pathname !== '/') router.replace('/')
+        }
       } finally {
         if (isMounted) {
           setAuthChecking(false)
@@ -213,6 +288,7 @@ export default function SuperAdminPage({ initialTab = 'overview' }: SuperAdminPa
     initSession()
     return () => {
       isMounted = false
+      window.removeEventListener('admin:unauthorized', onUnauthorized)
       clearTimeout(safetyTimer)
     }
   }, [])
@@ -633,17 +709,10 @@ export default function SuperAdminPage({ initialTab = 'overview' }: SuperAdminPa
         {/* Top Minimal Bar */}
         <div className="max-w-7xl w-full mx-auto p-6 flex items-center justify-between relative z-10">
           <div className="flex items-center gap-3">
-            <div className="size-9 rounded-xl bg-gradient-to-br from-[#9E593B] to-[#7B3F26] flex items-center justify-center font-bold text-white text-sm shadow-xs">
-              TG
-            </div>
-            <div>
-              <span className="font-bold text-base tracking-tight text-[#1E2229] block leading-tight">
-                TailorGrid
-              </span>
-              <span className="text-[10px] text-[#78716C] font-semibold">
-                Super Admin Portal
-              </span>
-            </div>
+            <RaffuLogo devanagariOnly size="md" />
+            <span className="text-[11px] font-extrabold uppercase tracking-widest text-[#9E593B] px-2.5 py-1 rounded-lg bg-[#FAF3ED] border border-[#EADBCE]">
+              Super Admin
+            </span>
           </div>
         </div>
 
@@ -660,9 +729,6 @@ export default function SuperAdminPage({ initialTab = 'overview' }: SuperAdminPa
               <h1 className="text-2xl font-bold tracking-tight text-[#1E2229]">
                 Super Admin Login
               </h1>
-              <p className="text-xs text-[#78716C] max-w-sm mx-auto leading-relaxed">
-                Enter your admin ID and password to access the dashboard.
-              </p>
             </div>
 
             {loginError && (
@@ -746,7 +812,7 @@ export default function SuperAdminPage({ initialTab = 'overview' }: SuperAdminPa
 
         {/* Bottom Minimal Footer */}
         <div className="p-6 text-center text-xs text-[#78716C] relative z-10">
-          TailorGrid Super Admin • Secure Admin Session
+          Raffu Super Admin • Secure Admin Session
         </div>
 
         <ToastContainer position="top-right" autoClose={3000} theme="light" />
@@ -762,20 +828,10 @@ export default function SuperAdminPage({ initialTab = 'overview' }: SuperAdminPa
         <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-4">
           {/* Logo & Super Admin badge */}
           <div className="flex items-center gap-3 shrink-0">
-            <div className="size-9 rounded-xl bg-gradient-to-br from-[#9E593B] to-[#7B3F26] flex items-center justify-center text-white font-bold tracking-wider text-sm shadow-xs">
-              TG
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="font-bold tracking-tight text-[#1E2229] text-base">TailorGrid</span>
-                <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-[#FAF3ED] text-[#9E593B] border border-[#EADBCE]">
-                  Super Admin
-                </span>
-              </div>
-              <p className="text-[11px] text-[#78716C] hidden sm:block">
-                Manage customers, studios, and orders
-              </p>
-            </div>
+            <RaffuLogo devanagariOnly size="md" />
+            <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-[#FAF3ED] text-[#9E593B] border border-[#EADBCE]">
+              Super Admin
+            </span>
           </div>
 
           {/* Omnichannel Global Search */}
@@ -1012,67 +1068,69 @@ export default function SuperAdminPage({ initialTab = 'overview' }: SuperAdminPa
 
       {/* ── MAIN CONTENT AREA ── */}
       <main className="flex-1 max-w-[1600px] w-full mx-auto p-4 sm:p-6 lg:p-8 space-y-6">
-        {/* ── TAB 1: OVERVIEW & ANALYTICS ── */}
-        {activeTab === 'overview' && (
-          <OverviewTab
-            overview={overview}
-            customers={customers}
-            studios={studios}
-            orders={orders}
-            onNavigateTab={handleTabSwitch}
-            onOpenAddCustomer={() => setShowAddCustomerModal(true)}
-            onOpenAddStudio={() => setShowAddStudioModal(true)}
-            onFilterOrderStatus={setOrderStatusFilter}
-            onEditOrder={setEditingOrder}
-          />
-        )}
+        <div key={activeTab} className="animate-fadeIn transition-opacity duration-200">
+          {/* ── TAB 1: OVERVIEW & ANALYTICS ── */}
+          {activeTab === 'overview' && (
+            <OverviewTab
+              overview={overview}
+              customers={customers}
+              studios={studios}
+              orders={orders}
+              onNavigateTab={handleTabSwitch}
+              onOpenAddCustomer={() => setShowAddCustomerModal(true)}
+              onOpenAddStudio={() => setShowAddStudioModal(true)}
+              onFilterOrderStatus={setOrderStatusFilter}
+              onEditOrder={setEditingOrder}
+            />
+          )}
 
-        {/* ── TAB 2: CUSTOMER MASTER MANAGEMENT ── */}
-        {activeTab === 'customers' && (
-          <CustomersTab
-            customers={customers}
-            customerSearch={customerSearch}
-            setCustomerSearch={setCustomerSearch}
-            customerStatusFilter={customerStatusFilter}
-            setCustomerStatusFilter={setCustomerStatusFilter}
-            onOpenAddCustomer={() => setShowAddCustomerModal(true)}
-            onEditCustomer={setEditingCustomer}
-            onDeleteCustomer={handleDeleteCustomer}
-            onViewCustomerOrders={setViewingCustomerOrders}
-          />
-        )}
+          {/* ── TAB 2: CUSTOMER MASTER MANAGEMENT ── */}
+          {activeTab === 'customers' && (
+            <CustomersTab
+              customers={customers}
+              customerSearch={customerSearch}
+              setCustomerSearch={setCustomerSearch}
+              customerStatusFilter={customerStatusFilter}
+              setCustomerStatusFilter={setCustomerStatusFilter}
+              onOpenAddCustomer={() => setShowAddCustomerModal(true)}
+              onEditCustomer={setEditingCustomer}
+              onDeleteCustomer={handleDeleteCustomer}
+              onViewCustomerOrders={setViewingCustomerOrders}
+            />
+          )}
 
-        {/* ── TAB 3: STUDIO FLEET MANAGEMENT ── */}
-        {activeTab === 'studios' && (
-          <StudiosTab
-            studios={studios}
-            studioSearch={studioSearch}
-            setStudioSearch={setStudioSearch}
-            studioAreaFilter={studioAreaFilter}
-            setStudioAreaFilter={setStudioAreaFilter}
-            availableAreas={availableAreas}
-            onOpenAddStudio={() => setShowAddStudioModal(true)}
-            onEditStudio={setEditingStudio}
-            onDeleteStudio={handleDeleteStudio}
-          />
-        )}
+          {/* ── TAB 3: STUDIO FLEET MANAGEMENT ── */}
+          {activeTab === 'studios' && (
+            <StudiosTab
+              studios={studios}
+              studioSearch={studioSearch}
+              setStudioSearch={setStudioSearch}
+              studioAreaFilter={studioAreaFilter}
+              setStudioAreaFilter={setStudioAreaFilter}
+              availableAreas={availableAreas}
+              onOpenAddStudio={() => setShowAddStudioModal(true)}
+              onEditStudio={setEditingStudio}
+              onDeleteStudio={handleDeleteStudio}
+            />
+          )}
 
-        {/* ── TAB 4: ORDERS & DISPATCH CONSOLE ── */}
-        {activeTab === 'orders' && (
-          <OrdersTab
-            orders={orders}
-            studios={studios}
-            orderSearch={orderSearch}
-            setOrderSearch={setOrderSearch}
-            orderStatusFilter={orderStatusFilter}
-            setOrderStatusFilter={setOrderStatusFilter}
-            orderStoreFilter={orderStoreFilter}
-            setOrderStoreFilter={setOrderStoreFilter}
-            orderRetailFilter={orderRetailFilter}
-            setOrderRetailFilter={setOrderRetailFilter}
-            onEditOrder={setEditingOrder}
-          />
-        )}
+          {/* ── TAB 4: ORDERS & DISPATCH CONSOLE ── */}
+          {activeTab === 'orders' && (
+            <OrdersTab
+              orders={orders}
+              studios={studios}
+              orderSearch={orderSearch}
+              setOrderSearch={setOrderSearch}
+              orderStatusFilter={orderStatusFilter}
+              setOrderStatusFilter={setOrderStatusFilter}
+              orderStoreFilter={orderStoreFilter}
+              setOrderStoreFilter={setOrderStoreFilter}
+              orderRetailFilter={orderRetailFilter}
+              setOrderRetailFilter={setOrderRetailFilter}
+              onEditOrder={setEditingOrder}
+            />
+          )}
+        </div>
       </main>
 
       {/* ── MODAL: EDIT CUSTOMER (MASTER ADMIN CAPABILITY) ── */}
@@ -1396,7 +1454,7 @@ export default function SuperAdminPage({ initialTab = 'overview' }: SuperAdminPa
                   type="email"
                   value={editingStudio.email || ''}
                   onChange={(e) => setEditingStudio({ ...editingStudio, email: e.target.value })}
-                  placeholder="e.g. atelier@darzi.com"
+                  placeholder="e.g. atelier@raffu.com"
                   className="w-full p-2.5 bg-[#FAF8F5] border border-[#E8E1D5] rounded-xl focus:ring-2 focus:ring-[#9E593B] focus:outline-none"
                 />
               </div>
@@ -1474,7 +1532,7 @@ export default function SuperAdminPage({ initialTab = 'overview' }: SuperAdminPa
             </button>
 
             <h3 className="text-base font-bold text-[#1E2229] mb-1">Onboard New Partner Atelier</h3>
-            <p className="text-xs text-[#78716C] mb-4">Register a partner studio workshop into TailorGrid fleet.</p>
+            <p className="text-xs text-[#78716C] mb-4">Register a partner studio workshop into Raffu fleet.</p>
 
             <form onSubmit={handleCreateStudio} className="space-y-3.5 text-xs">
               <div>
@@ -1541,7 +1599,7 @@ export default function SuperAdminPage({ initialTab = 'overview' }: SuperAdminPa
                 <input
                   name="email"
                   type="email"
-                  placeholder="e.g. atelier@darzi.com"
+                  placeholder="e.g. atelier@raffu.com"
                   className="w-full p-2.5 bg-[#FAF8F5] border border-[#E8E1D5] rounded-xl focus:ring-2 focus:ring-[#9E593B] focus:outline-none"
                 />
               </div>

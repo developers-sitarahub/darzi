@@ -6,9 +6,7 @@ import {
   CheckCircle2,
   Loader2,
   Mail,
-  MapPin,
   Phone,
-  Scissors,
   ShieldCheck,
   X,
 } from 'lucide-react'
@@ -16,6 +14,7 @@ import { type Screen } from './data'
 import { useApp } from './app-provider'
 import { getAuthRole } from '@/lib/cookies'
 import { subscribeNewsletter } from '@/lib/api'
+import { RaffuLogo } from './raffu-logo'
 
 export function Footer({ go }: { go: (s: Screen) => void }) {
   const { user } = useApp()
@@ -66,8 +65,8 @@ export function Footer({ go }: { go: (s: Screen) => void }) {
 
             {/* Brand Col */}
             <div className="lg:col-span-4">
-              <div className="flex items-center gap-3 mb-4">
-                <img src="/landscape_logo.jpeg" alt="Darzi Logo" className="h-10 sm:h-12 w-auto object-contain rounded-lg" />
+              <div className="flex items-center gap-3 mb-5 cursor-pointer" onClick={() => nav('home')}>
+                <RaffuLogo theme="dark" subtitle="OWN YOUR FIT" size="md" />
               </div>
               <p className="text-xs sm:text-sm text-[#9CA3AF] leading-relaxed mb-6 max-w-[320px]">
                 Professional clothing alterations and tailoring. Guaranteed perfect fit, upfront clear prices, and easy local service.
@@ -75,7 +74,7 @@ export function Footer({ go }: { go: (s: Screen) => void }) {
 
               {/* Newsletter Subscription */}
               <div className="pt-1">
-                <p className="text-[11px] font-semibold uppercase tracking-wider text-[#D1D5DB] mb-2">
+                <p className="text-xs sm:text-[13px] font-semibold uppercase tracking-wider text-[#D1D5DB] mb-2.5">
                   Subscribe for Offers &amp; Updates
                 </p>
                 {subscribed ? (
@@ -120,36 +119,43 @@ export function Footer({ go }: { go: (s: Screen) => void }) {
             </div>
 
             {/* Services Column */}
-            <div className="lg:col-span-3 sm:col-span-4 space-y-3">
-              <h5 className="text-[11px] uppercase tracking-wider text-[#9E593B] font-bold">
+            <div className="lg:col-span-3 sm:col-span-4">
+              <h5 className="text-xs sm:text-[13px] uppercase tracking-wider text-[#9E593B] font-bold mb-4">
                 Services
               </h5>
-              <ul className="space-y-2 text-xs text-[#9CA3AF]">
-                {[
-                  'Trousers & Jeans Alterations',
-                  'Suits & Blazer Tailoring',
-                  'Dresses & Gowns Fitting',
-                  'Waist & Slimming Adjustments',
-                  'Ethnic & Occasion Wear',
-                  'Zip & Garment Repairs',
-                ].map((serviceName) => (
-                  <li key={serviceName}>
-                    <button
-                      onClick={() => nav('home')}
-                      className="hover:text-white transition-colors text-left block"
-                    >
-                      {serviceName}
-                    </button>
-                  </li>
-                ))}
+              <ul className="space-y-3 text-sm text-[#9CA3AF]">
+                <li>
+                  <button
+                    onClick={() => nav('for-partners')}
+                    className="hover:text-white transition-colors text-left cursor-pointer"
+                  >
+                    Work with Raffu
+                  </button>
+                </li>
+                <li>
+                  <button
+                    onClick={() => nav('book')}
+                    className="hover:text-white transition-colors text-left cursor-pointer"
+                  >
+                    Order from Raffu
+                  </button>
+                </li>
+                <li>
+                  <button
+                    onClick={() => nav('contact')}
+                    className="hover:text-white transition-colors text-left cursor-pointer"
+                  >
+                    Contact
+                  </button>
+                </li>
               </ul>
             </div>
 
             {/* Company */}
             <div className="lg:col-span-3 sm:col-span-4">
-              <h5 className="text-[11px] uppercase tracking-wider text-[#9E593B] font-bold mb-4">Company</h5>
-              <ul className="space-y-2.5 text-xs text-[#9CA3AF]">
-                <li><button onClick={() => nav('about')} className="hover:text-white transition-colors">About Darzi</button></li>
+              <h5 className="text-xs sm:text-[13px] uppercase tracking-wider text-[#9E593B] font-bold mb-4">Company</h5>
+              <ul className="space-y-3 text-sm text-[#9CA3AF]">
+                <li><button onClick={() => nav('about')} className="hover:text-white transition-colors">About Raffu</button></li>
                 <li><button onClick={() => nav('how-it-works')} className="hover:text-white transition-colors">How It Works</button></li>
                 <li><button onClick={() => isCustomer ? nav('book') : nav('for-partners')} className="hover:text-white transition-colors">{isCustomer ? 'Book Alterations' : 'Partner With Us'}</button></li>
                 <li><button onClick={() => nav('orders')} className="hover:text-white transition-colors">Saved Fit Profile</button></li>
@@ -157,11 +163,11 @@ export function Footer({ go }: { go: (s: Screen) => void }) {
             </div>
 
             {/* Portals & Help Column */}
-            <div className="lg:col-span-2 sm:col-span-4 space-y-3">
-              <h5 className="text-[11px] uppercase tracking-wider text-[#9E593B] font-bold">
-                Portals & Help
+            <div className="lg:col-span-2 sm:col-span-4">
+              <h5 className="text-xs sm:text-[13px] uppercase tracking-wider text-[#9E593B] font-bold mb-4">
+                Portals &amp; Help
               </h5>
-              <ul className="space-y-2 text-xs text-[#9CA3AF]">
+              <ul className="space-y-3 text-sm text-[#9CA3AF]">
                 {!isCustomer && (
                   <li>
                     <button onClick={() => nav('partner')} className="hover:text-white transition-colors text-left cursor-pointer">
@@ -175,13 +181,13 @@ export function Footer({ go }: { go: (s: Screen) => void }) {
                   </button>
                 </li>
                 <li>
-                  <button onClick={() => nav('support')} className="hover:text-white transition-colors text-left cursor-pointer">
-                    Support &amp; FAQ
+                  <button onClick={() => nav('privacy')} className="hover:text-white transition-colors text-left cursor-pointer">
+                    Customer Privacy Policy
                   </button>
                 </li>
                 <li>
-                  <button onClick={() => nav('privacy')} className="hover:text-white transition-colors text-left cursor-pointer">
-                    Customer Privacy Policy
+                  <button onClick={() => nav('terms')} className="hover:text-white transition-colors text-left cursor-pointer">
+                    Terms &amp; Conditions
                   </button>
                 </li>
               </ul>
@@ -191,32 +197,8 @@ export function Footer({ go }: { go: (s: Screen) => void }) {
         </div>
 
         {/* Bottom */}
-        <div className="mt-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-[#6B7280]">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span>© {new Date().getFullYear()} Darzi Technologies Ltd.</span>
-            <span>·</span>
-            <button onClick={() => nav('privacy')} className="hover:text-white transition-colors cursor-pointer">
-              Privacy Policy
-            </button>
-            <span>·</span>
-            <button onClick={() => nav('support')} className="hover:text-white transition-colors cursor-pointer">
-              Support
-            </button>
-            <span>·</span>
-            <button onClick={() => nav('contact')} className="hover:text-white transition-colors cursor-pointer">
-              Contact
-            </button>
-            <span>·</span>
-            <span className="flex items-center gap-1 text-[#10B981]"><ShieldCheck size={13} /> 100% Fit Guarantee</span>
-          </div>
-          <div className="flex items-center gap-4">
-            <span className="flex items-center gap-1"><MapPin size={12} /> Mumbai</span>
-            <span>·</span>
-            <span>Pune</span>
-            <span>·</span>
-            <span>London</span>
-          </div>
-
+        <div className="mt-8 text-center text-xs sm:text-sm text-[#6B7280]">
+          <p>© {new Date().getFullYear()} Raffu Technologies Ltd. All rights reserved.</p>
         </div>
       </footer>
 
@@ -244,7 +226,7 @@ export function Footer({ go }: { go: (s: Screen) => void }) {
                   100% Fit Guarantee Policy
                 </h3>
                 <p className="text-xs sm:text-sm text-[#5A5D64] leading-relaxed">
-                  Every order booked through Darzi is protected by our zero-risk Fit Guarantee. When you collect your tailored garment at the partner studio, you are invited to try it on in the private fitting room.
+                  Every order booked through Raffu is protected by our zero-risk Fit Guarantee. When you collect your tailored garment at the partner studio, you are invited to try it on in the private fitting room.
                 </p>
                 <div className="rounded-xl bg-white border border-[#EBE6DF] p-4 text-xs space-y-2">
                   <p className="font-bold text-[#0F1115]">What is covered:</p>
@@ -270,7 +252,7 @@ export function Footer({ go }: { go: (s: Screen) => void }) {
                   Privacy & Data Policy
                 </h3>
                 <p className="text-xs sm:text-sm text-[#5A5D64] leading-relaxed">
-                  Darzi Technologies Ltd. values your privacy. We only collect essential customer data (fitting measurements, order status, contact phone/email) to facilitate studio bookings and maintain your secure Digital Fit Passport.
+                  Raffu Technologies Ltd. values your privacy. We only collect essential customer data (fitting measurements, order status, contact phone/email) to facilitate studio bookings and maintain your secure Digital Fit Passport.
                 </p>
                 <p className="text-xs sm:text-sm text-[#5A5D64] leading-relaxed">
                   Your payment information is encrypted end-to-end and never stored in plain text. We do not sell personal data to third parties.
@@ -291,7 +273,7 @@ export function Footer({ go }: { go: (s: Screen) => void }) {
                   Terms of Service
                 </h3>
                 <p className="text-xs sm:text-sm text-[#5A5D64] leading-relaxed">
-                  By using the Darzi platform and partner atelier network, you agree to our standardized craft guidelines, transparent fixed fee structure, and studio fitting room safety protocols.
+                  By using the Raffu platform and partner atelier network, you agree to our standardized craft guidelines, transparent fixed fee structure, and studio fitting room safety protocols.
                 </p>
                 <p className="text-xs sm:text-sm text-[#5A5D64] leading-relaxed">
                   Alterations are completed within the agreed 48–72 hour turnaround timeline barring specialist luxury fabrics with prior customer notice.
@@ -317,11 +299,11 @@ export function Footer({ go }: { go: (s: Screen) => void }) {
                 <div className="space-y-3 pt-2">
                   <div className="flex items-center gap-3 rounded-xl bg-white border border-[#EBE6DF] p-3 text-xs font-semibold text-[#0F1115]">
                     <Mail size={16} className="text-[#9E593B]" />
-                    <span>support@darzi.com</span>
+                    <span>support@raffu.com</span>
                   </div>
                   <div className="flex items-center gap-3 rounded-xl bg-white border border-[#EBE6DF] p-3 text-xs font-semibold text-[#0F1115]">
                     <Phone size={16} className="text-[#10B981]" />
-                    <span>+1 (800) 555-DARZI / +44 (20) 7946 0912</span>
+                    <span>+1 (800) 555-RAFFU / +44 (20) 7946 0912</span>
                   </div>
                 </div>
                 <button

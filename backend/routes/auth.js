@@ -10,6 +10,7 @@ const {
   verifyOtp,
 } = require("../lib/sms");
 const { sendAuthOtpEmail, sendWelcomeEmail } = require("../lib/email");
+const { hashPassword } = require("../lib/password");
 
 const router = express.Router();
 const JWT_SECRET = process.env.JWT_SECRET || "Darzi_jwt_secret_key_2026";
@@ -166,9 +167,31 @@ async function generateTokens(user) {
 
   if (user?.id && !String(user.id).startsWith("temp_g_")) {
     try {
+      let previousHash = null;
+      try {
+        const existingUser = await prisma.user.findUnique({
+          where: { id: user.id },
+          select: { refreshToken: true },
+        });
+        if (existingUser?.refreshToken) {
+          if (existingUser.refreshToken.startsWith("{")) {
+            const parsed = JSON.parse(existingUser.refreshToken);
+            previousHash = parsed.current || null;
+          } else {
+            previousHash = existingUser.refreshToken;
+          }
+        }
+      } catch (_) {}
+
+      const tokenPayload = JSON.stringify({
+        current: hashedRt,
+        previous: previousHash,
+        rotatedAt: Date.now(),
+      });
+
       await prisma.user.update({
         where: { id: user.id },
-        data: { refreshToken: hashedRt },
+        data: { refreshToken: tokenPayload },
       });
     } catch (err) {
       console.warn(
@@ -211,8 +234,17 @@ function setAuthCookies(res, tokens, req) {
 
   res.cookie("tg_token", tokens.accessToken, cookieOptions);
 
+  // Set tg_refresh_token strictly as HttpOnly so JavaScript/XSS/Extensions CANNOT read or steal it
   res.cookie("tg_refresh_token", tokens.refreshToken, {
     ...cookieOptions,
+    httpOnly: true,
+    maxAge: rtMaxAge * 1000,
+  });
+
+  // Non-sensitive session indicator so client knows an active HttpOnly refresh token exists
+  res.cookie("tg_logged_in", "1", {
+    ...cookieOptions,
+    httpOnly: false,
     maxAge: rtMaxAge * 1000,
   });
 }
@@ -222,6 +254,7 @@ async function findOrLinkUser({
   email,
   phone,
   name,
+  password,
   avatar,
   address,
   postcode,
@@ -238,7 +271,7 @@ async function findOrLinkUser({
 }) {
   const normEmail = email ? email.trim().toLowerCase() : null;
   const normPhone = phone ? phone.trim() : null;
-  const contactStr = normEmail || normPhone || "member@darzi.com";
+  const contactStr = normEmail || normPhone || "member@raffu.com";
 
   let user = null;
 
@@ -440,6 +473,7 @@ async function findOrLinkUser({
 
     const updatedFields = {
       email: normEmail || user.email,
+      ...(password ? { password } : {}),
       role: user.role || role,
       status: resolvedStatus,
       phone: updatedPhone,
@@ -447,20 +481,16 @@ async function findOrLinkUser({
         name &&
         name !== "Master Tailor" &&
         name !== "Google User" &&
-        name !== "Darzi Member" &&
+        name !== "Raffu Member" &&
         name !== "Mobile Member"
           ? name
-          : user.name || name || "Darzi Member",
+          : user.name || name || "Raffu Member",
       avatar:
         user.avatar && !user.avatar.includes("dicebear")
           ? user.avatar
           : avatar && !avatar.includes("dicebear")
             ? avatar
-            : user.avatar ||
-              avatar ||
-              `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(
-                normEmail || normPhone || "user",
-              )}`,
+            : null,
       address: address || resolvedStore?.address || user.address || null,
       postcode: postcode || resolvedStore?.postcode || user.postcode || null,
       contact:
@@ -549,16 +579,16 @@ async function findOrLinkUser({
       name:
         name ||
         (normEmail
-          ? "Darzi User"
+          ? "Raffu User"
           : normPhone
             ? "Mobile Member"
-            : "Darzi Member"),
+            : "Raffu Member"),
       email: normEmail,
       phone: normPhone,
+      password: password || null,
       contact: contactStr,
       avatar:
-        avatar ||
-        `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(contactStr)}`,
+        avatar && !avatar.includes("dicebear") ? avatar : null,
       address:
         address ||
         (resolvedRole === "STUDIO" ? resolvedStore?.address || null : null),
@@ -670,55 +700,12 @@ router.post("/send-otp", async (req, res) => {
         // Send real SMS via AWS SNS
         const smsResult = await sendVerificationSms(cleanPhone, code);
 
-        // If email is passed or associated with this user, also dispatch OTP via Resend
-        let emailSent = false;
-        try {
-          let targetEmail = req.body.email
-            ? String(req.body.email).trim().toLowerCase()
-            : null;
-          let customerName = "Darzi User";
-          if (!targetEmail) {
-            const user = await prisma.user.findFirst({
-              where: {
-                OR: [{ phone: cleanPhone }, { contact: cleanPhone }],
-              },
-            });
-            if (user?.email) {
-              targetEmail = user.email.trim().toLowerCase();
-              if (user.name) customerName = user.name;
-            }
-          }
-          if (
-            targetEmail &&
-            targetEmail.includes("@") &&
-            !targetEmail.includes("example.com")
-          ) {
-            const emailRes = await sendAuthOtpEmail({
-              toEmail: targetEmail,
-              otp: code,
-              customerName,
-            });
-            if (emailRes.success) {
-              emailSent = true;
-              console.log(
-                `[AUTH-OTP] Sent OTP code via Resend to ${targetEmail}`,
-              );
-            }
-          }
-        } catch (emailErr) {
-          console.warn(
-            "[AUTH-OTP] Non-blocking email dispatch warning:",
-            emailErr.message,
-          );
-        }
-
         const responsePayload = {
           success: true,
           phone: cleanPhone,
-          message: emailSent
-            ? `Verification code sent via SMS & Email to ${cleanPhone}`
-            : smsResult.message ||
-              `Verification code sent via SMS to ${cleanPhone}`,
+          message:
+            smsResult.message ||
+            `Verification code sent via SMS to ${cleanPhone}`,
         };
         resolveDispatch(responsePayload);
       } catch (dispatchErr) {
@@ -737,6 +724,122 @@ router.post("/send-otp", async (req, res) => {
     return res
       .status(500)
       .json({ error: err.message || "Failed to send verification code." });
+  }
+});
+
+// POST /api/auth/send-email-otp
+router.post("/send-email-otp", async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email || !String(email).trim().includes("@")) {
+      return res.status(400).json({ error: "A valid email address is required." });
+    }
+
+    const cleanEmail = email.trim().toLowerCase();
+    const code = Math.floor(1000 + Math.random() * 9000).toString();
+
+    // Persist OTP code for 10 minutes
+    await saveOtp(cleanEmail, code, 10);
+    console.log(`[AUTH-EMAIL-OTP] Generated & saved OTP for ${cleanEmail}: ${code}`);
+
+    // Dispatch via Resend
+    try {
+      const emailRes = await sendAuthOtpEmail({
+        toEmail: cleanEmail,
+        otp: code,
+        customerName: "Raffu Member",
+      });
+      if (emailRes.success) {
+        console.log(`[AUTH-EMAIL-OTP] Sent email to ${cleanEmail}`);
+      } else {
+        console.warn("[AUTH-EMAIL-OTP] Resend notice:", emailRes.error || emailRes.reason);
+      }
+    } catch (eErr) {
+      console.warn("[AUTH-EMAIL-OTP] Email dispatch error:", eErr.message);
+    }
+
+    return res.json({
+      success: true,
+      message: "Verification code sent to your email! Valid for 10 minutes.",
+    });
+  } catch (err) {
+    console.error("Send Email OTP Error:", err);
+    return res
+      .status(500)
+      .json({ error: err.message || "Failed to send email verification code." });
+  }
+});
+
+// POST /api/auth/verify-email-otp
+router.post("/verify-email-otp", async (req, res) => {
+  try {
+    const { email, otp } = req.body;
+    if (!email || !otp) {
+      return res
+        .status(400)
+        .json({ error: "Email address and verification code are required." });
+    }
+
+    const cleanEmail = email.trim().toLowerCase();
+    const cleanOtp = String(otp).trim();
+
+    const isValid = await verifyOtp(cleanEmail, cleanOtp);
+    if (!isValid) {
+      return res
+        .status(400)
+        .json({ error: "Invalid or expired verification code." });
+    }
+
+    console.log(`[AUTH-EMAIL-OTP] Verified OTP successfully for ${cleanEmail}`);
+    return res.json({
+      success: true,
+      verified: true,
+      message: "Email verified successfully!",
+    });
+  } catch (err) {
+    console.error("Verify Email OTP Error:", err);
+    return res
+      .status(500)
+      .json({ error: err.message || "Failed to verify email code." });
+  }
+});
+
+// POST /api/auth/verify-phone-otp
+router.post("/verify-phone-otp", async (req, res) => {
+  try {
+    const { phone, otp } = req.body;
+    if (!phone || !otp) {
+      return res
+        .status(400)
+        .json({ error: "Mobile number and verification code are required." });
+    }
+
+    const phoneValidation = validateAndFormatPhone(phone);
+    if (!phoneValidation.isValid) {
+      return res.status(400).json({ error: phoneValidation.error });
+    }
+
+    const cleanPhone = phoneValidation.formatted;
+    const cleanOtp = String(otp).trim();
+
+    const isValid = await verifyOtp(cleanPhone, cleanOtp);
+    if (!isValid) {
+      return res
+        .status(400)
+        .json({ error: "Invalid or expired verification code." });
+    }
+
+    console.log(`[AUTH-PHONE-OTP] Verified phone OTP successfully for ${cleanPhone}`);
+    return res.json({
+      success: true,
+      verified: true,
+      message: "Mobile number verified successfully!",
+    });
+  } catch (err) {
+    console.error("Verify Phone OTP Error:", err);
+    return res
+      .status(500)
+      .json({ error: err.message || "Failed to verify mobile code." });
   }
 });
 
@@ -930,16 +1033,6 @@ router.post("/verify-otp", async (req, res) => {
     const authCode = createAuthCode(returnUser, tokens.accessToken);
     setAuthCookies(res, tokens);
 
-    if (returnUser?.email && returnUser.role === "CUSTOMER") {
-      sendWelcomeEmail({
-        toEmail: returnUser.email,
-        name: returnUser.name,
-        role: "CUSTOMER",
-        phone: returnUser.phone || "",
-      }).catch((wErr) =>
-        console.warn("[WELCOME EMAIL] verify-otp notice:", wErr.message),
-      );
-    }
     return res.json({
       success: true,
       message: "Mobile number verified and authenticated successfully",
@@ -1076,16 +1169,6 @@ router.post("/link-phone", async (req, res) => {
     const authCode = createAuthCode(user, tokens.accessToken);
     setAuthCookies(res, tokens);
 
-    if (user?.email && user.role === "CUSTOMER") {
-      sendWelcomeEmail({
-        toEmail: user.email,
-        name: user.name,
-        role: "CUSTOMER",
-        phone: user.phone || cleanPhone || "",
-      }).catch((wErr) =>
-        console.warn("[WELCOME EMAIL] link-phone notice:", wErr.message),
-      );
-    }
     return res.json({
       success: true,
       message: "Mobile number linked successfully",
@@ -1375,16 +1458,6 @@ router.post("/google", async (req, res) => {
         const authCode = createAuthCode(returnUser, tokens.accessToken);
         setAuthCookies(res, tokens);
 
-        if (returnUser?.email && returnUser.role === "CUSTOMER") {
-          sendWelcomeEmail({
-            toEmail: returnUser.email,
-            name: returnUser.name,
-            role: "CUSTOMER",
-            phone: returnUser.phone || "",
-          }).catch((wErr) =>
-            console.warn("[WELCOME EMAIL] Google auth notice:", wErr.message),
-          );
-        }
         return res.json({
           success: true,
           message: "Authenticated with Google successfully",
@@ -1414,9 +1487,7 @@ router.post("/google", async (req, res) => {
       const createdTempUser = await findOrLinkUser({
         name: name || "Google User",
         email: cleanEmail,
-        avatar:
-          avatar ||
-          `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(cleanEmail)}`,
+        avatar: avatar && !avatar.includes("dicebear") ? avatar : null,
         method: "google",
         role: "TEMP_STUDIO",
         status: "INACTIVE",
@@ -1447,9 +1518,7 @@ router.post("/google", async (req, res) => {
       {
         email: cleanEmail,
         name: name || "Google User",
-        avatar:
-          avatar ||
-          `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(cleanEmail)}`,
+        avatar: avatar && !avatar.includes("dicebear") ? avatar : null,
         role,
         method: "google",
         type: "pending_google_signup",
@@ -1462,9 +1531,7 @@ router.post("/google", async (req, res) => {
       tempSignupId,
       email: cleanEmail,
       name: name || "Google User",
-      avatar:
-        avatar ||
-        `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(cleanEmail)}`,
+      avatar: avatar && !avatar.includes("dicebear") ? avatar : null,
       role,
       method: "google",
     });
@@ -1473,9 +1540,7 @@ router.post("/google", async (req, res) => {
       id: tempSignupId,
       name: name || "Google User",
       email: cleanEmail,
-      avatar:
-        avatar ||
-        `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(cleanEmail)}`,
+      avatar: avatar && !avatar.includes("dicebear") ? avatar : null,
       role,
       status: "ACTIVE",
       contact: cleanEmail,
@@ -1520,6 +1585,7 @@ router.post("/signup", async (req, res) => {
       name,
       email,
       phone,
+      password,
       address,
       postcode,
       role = "CUSTOMER",
@@ -1554,7 +1620,7 @@ router.post("/signup", async (req, res) => {
       }
       finalPhone = phoneValidation.formatted;
     }
-    const finalName = name || cachedGoogleData?.name || "Darzi Member";
+    const finalName = name || cachedGoogleData?.name || "Raffu Member";
     const finalAvatar = cachedGoogleData?.avatar;
     const finalMethod = tempSignupId || cachedGoogleData ? "google" : "email";
 
@@ -1640,6 +1706,7 @@ router.post("/signup", async (req, res) => {
       name: finalName,
       email: finalEmail || undefined,
       phone: finalPhone || undefined,
+      password: password ? hashPassword(password.trim()) : undefined,
       avatar: finalAvatar,
       method: finalMethod,
       address,
@@ -2095,7 +2162,7 @@ router.post("/update-profile", async (req, res) => {
             studioName ||
             user.studioName ||
             user.name ||
-            "Darzi Partner Studio"
+            "Raffu Partner Studio"
           ).trim();
           const storeArea = (area || user.postcode || "Mumbai").trim();
           const storeAddress = (
@@ -2278,14 +2345,23 @@ router.post("/update-profile", async (req, res) => {
 
 // GET /api/auth/me
 router.get("/me", async (req, res) => {
-  const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith("Bearer ")) {
-    return res.status(401).json({ error: "Unauthorized: missing token" });
+  let decoded = req.user;
+
+  // Fallback: check Authorization header if req.user was not populated
+  if (!decoded) {
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith("Bearer ")) {
+      try {
+        decoded = jwt.verify(authHeader.split(" ")[1], JWT_SECRET);
+      } catch (_) {}
+    }
   }
 
-  const token = authHeader.split(" ")[1];
+  if (!decoded) {
+    return res.status(401).json({ error: "Unauthorized: missing or expired session" });
+  }
+
   try {
-    const decoded = jwt.verify(token, JWT_SECRET);
 
     let user = null;
     if (decoded.id) {
@@ -2488,13 +2564,32 @@ router.post("/refresh", async (req, res) => {
 
     // Encrypted token validation: verify hashed token matches PostgreSQL record
     const incomingHashed = hashRefreshToken(refreshToken);
-    if (!user.refreshToken || user.refreshToken !== incomingHashed) {
-      return res
-        .status(401)
-        .json({
-          error:
-            "Refresh token has been revoked, rotated, or invalidated. Please sign in again.",
-        });
+    let storedHash = user.refreshToken;
+    let isMatch = false;
+
+    if (storedHash) {
+      if (storedHash === incomingHashed) {
+        isMatch = true;
+      } else if (storedHash.startsWith("{")) {
+        try {
+          const parsed = JSON.parse(storedHash);
+          if (parsed?.current === incomingHashed) {
+            isMatch = true;
+          } else if (
+            parsed?.previous === incomingHashed &&
+            Date.now() - (parsed?.rotatedAt || 0) < 60 * 1000 // 60s grace period for concurrent tabs/requests
+          ) {
+            isMatch = true;
+          }
+        } catch {}
+      }
+    }
+
+    if (!isMatch) {
+      return res.status(401).json({
+        error:
+          "Refresh token has been revoked, rotated, or invalidated. Please sign in again.",
+      });
     }
 
     if (user.status === "BANNED" || user.status === "SUSPENDED") {
@@ -2514,7 +2609,7 @@ router.post("/refresh", async (req, res) => {
       returnUser = await enrichStudioUser(user);
     }
 
-    // Issue new pair and rotate database stored hash
+    // Issue new pair and update database stored hash
     const tokens = await generateTokens(returnUser);
     setAuthCookies(res, tokens);
 
@@ -2600,6 +2695,7 @@ router.post("/logout", async (req, res) => {
     const cookieNames = [
       "tg_token",
       "tg_refresh_token",
+      "tg_logged_in",
       "tg_user_role",
       "tg_user",
       "token",

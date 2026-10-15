@@ -20,6 +20,7 @@ import { linkPhone, loginUser, loginWithGoogle, sendOtp, signUpUser, verifyOtp, 
 import { setAuthRole, setAuthToken, setAuthUser, getAuthToken, setRefreshToken, getRefreshToken, decodeJwtPayload } from '@/lib/cookies'
 import { OtpVerificationCard } from './otp-input'
 import { CustomSelect } from './custom-select'
+import { RaffuLogo } from './raffu-logo'
 
 type AuthMode =
   | 'role-select'
@@ -526,12 +527,8 @@ export function AuthModal({
           )}
 
           <div className="flex items-center gap-3">
-            <img
-              src="/bg_logo.png"
-              alt="Darzi Logo"
-              className="h-12 sm:h-14 w-auto object-contain transition-all duration-200"
-            />
-            <div>
+            <RaffuLogo devanagariOnly size="md" />
+            <div className="border-l border-[#E8E1D5] pl-3">
               <span className="text-[10px] font-extrabold tracking-widest uppercase text-[#9E593B] block leading-none">
                 Studio Portal
               </span>
@@ -589,7 +586,7 @@ export function AuthModal({
                 How are you joining?
               </h2>
               <p className="text-xs text-[#6B7280] mt-1">
-                Choose your role to get started with Darzi.
+                Choose your role to get started with Raffu.
               </p>
             </div>
 
@@ -703,7 +700,7 @@ export function AuthModal({
             <div>
               <p className="text-[11px] font-extrabold uppercase tracking-[0.16em] text-[#9E593B]">Partner Network</p>
               <h2 className="font-serif text-[24px] font-bold text-[#0F1115] mt-0.5 leading-tight">Register Your Atelier</h2>
-              <p className="text-xs text-[#6B7280] mt-1">Join Darzi as a certified partner atelier to receive pre-pinned alteration jobs.</p>
+              <p className="text-xs text-[#6B7280] mt-1">Join Raffu as a certified partner atelier to receive pre-pinned alteration jobs.</p>
             </div>
 
             <div className="space-y-2.5">

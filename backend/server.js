@@ -112,6 +112,7 @@ const sensitiveLimiter = rateLimit({
 app.use("/api", globalApiLimiter);
 app.use("/api/newsletter/subscribe", sensitiveLimiter);
 app.use("/api/auth/send-otp", sensitiveLimiter);
+app.use("/api/auth/send-email-otp", sensitiveLimiter);
 app.use("/api/auth/login", sensitiveLimiter);
 app.use("/api/admin/login", sensitiveLimiter);
 
@@ -123,7 +124,7 @@ app.get("/api/health", async (req, res) => {
   const dbStatus = await checkDbConnection();
   res.json({
     status: "ok",
-    service: "Darzi Backend API",
+    service: "Raffu Backend API",
     database: {
       orm: "Prisma 6",
       provider: "postgresql",
@@ -133,6 +134,11 @@ app.get("/api/health", async (req, res) => {
     timestamp: new Date().toISOString(),
   });
 });
+
+const { authenticateUser } = require("./lib/auth-middleware");
+
+// Universal Auth & Transparent Token Auto-Renewal on all API endpoints
+app.use("/api", authenticateUser);
 
 // Routes
 app.use("/api/auth", authRoutes);
@@ -149,12 +155,12 @@ app.use((req, res) => {
 // Global error handler
 app.use((err, req, res, next) => {
   console.error("Server error:", err);
-  res.status(500).json({ error: "Internal server error" });
+  res.status(500).json({ error: err.message || "Internal server error" });
 });
 
 app.listen(PORT, async () => {
   console.log(`=================================`);
-  console.log(`Darzi Backend Running on http://localhost:${PORT}`);
+  console.log(`Raffu Backend Running on http://localhost:${PORT}`);
   console.log(`Health Check: http://localhost:${PORT}/api/health`);
   const dbCheck = await checkDbConnection();
   if (dbCheck.connected) {

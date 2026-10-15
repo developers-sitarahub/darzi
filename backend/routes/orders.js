@@ -20,7 +20,7 @@ router.get('/dispatch/pending', async (req, res) => {
       return res.status(403).json({ error: 'Forbidden: Cannot access dispatch feed of another studio partner.' });
     }
 
-    const pending = dispatchService.getPendingRequestsForTailor(storeId);
+    const pending = await dispatchService.getPendingRequestsForTailor(storeId);
     return res.json({ success: true, pendingRequests: pending });
   } catch (err) {
     console.error('Pending dispatch fetch error:', err);
@@ -153,7 +153,7 @@ router.post('/dispatch/start', async (req, res) => {
       postcode: postcode || 'W8 4EP',
       garmentId: garmentId || 'trousers',
       garmentName: garmentName || 'Trousers & Jeans',
-      quantity: req.body.quantity ? Math.max(1, parseInt(req.body.quantity, 10)) : (quantity ? Math.max(1, parseInt(quantity, 10)) : 1),
+      quantity: req.body.quantity ? Math.min(4, Math.max(1, parseInt(req.body.quantity, 10))) : (quantity ? Math.min(4, Math.max(1, parseInt(quantity, 10))) : 1),
       serviceId: serviceId || 'trouser-hem',
       serviceName: serviceName || 'Standard Hemming',
       date: date || new Date().toISOString().split('T')[0],
@@ -994,6 +994,35 @@ router.put('/:id', async (req, res) => {
       if (storeId) {
         const storeExists = await prisma.partnerStore.findUnique({ where: { id: storeId } });
         if (storeExists) {
+          // If moving to Accepted or assigning store, verify the studio has not disabled this service
+          if (status === 'Accepted' || existingOrder.status === 'Allocated') {
+            const studioItems = await prisma.studioCatalogItem.findMany({
+              where: {
+                OR: [
+                  { studioId: storeId },
+                  ...(storeExists.userId ? [{ userId: storeExists.userId }] : []),
+                ],
+              },
+            });
+            if (studioItems.length > 0) {
+              const orderSvc = {
+                serviceId: existingOrder.serviceId,
+                serviceName: existingOrder.serviceName,
+                garmentId: existingOrder.garmentId,
+              };
+              const matching = studioItems.filter((i) => dispatchService.matchesServiceItem(i, orderSvc));
+              if (matching.length > 0) {
+                const hasEnabled = matching.some((i) => i.enabled && Number(i.price) > 0);
+                if (!hasEnabled) {
+                  return res.status(400).json({
+                    error: 'You have disabled this alteration service in your Workshop Price Catalog.',
+                    code: 'SERVICE_DISABLED',
+                  });
+                }
+              }
+            }
+          }
+
           updateData.storeId = storeId;
           if (!updateData.storeName || (updateData.storeName === 'Atelier SoHo' && storeExists.name !== 'Atelier SoHo')) {
             updateData.storeName = storeExists.name;

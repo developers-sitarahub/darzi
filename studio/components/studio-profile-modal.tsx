@@ -332,7 +332,7 @@ export function StudioProfileModal({
                         className="size-20 sm:size-24 rounded-2xl overflow-hidden bg-[#18191B] text-white grid place-items-center relative border border-[#E0D8CB] shadow-xs cursor-pointer group-hover:border-[#9E593B] transition-all"
                         title="Click to change photo"
                       >
-                        {avatar ? (
+                        {avatar && !avatar.includes('dicebear') ? (
                           <img
                             src={avatar}
                             alt={studioName}
@@ -623,7 +623,7 @@ export function StudioProfileModal({
                     placeholder="e.g. SoHo & Lower Manhattan"
                     className="w-full rounded-xl border border-[#E0D8CB] bg-[#FAF8F5] px-3.5 py-2.5 text-xs text-[#18191B] font-semibold focus:border-[#9E593B] focus:bg-white focus:outline-none"
                   />
-                  <p className="text-[10.5px] text-[#8C8275]">Used for customer distance matching on the Darzi Grid.</p>
+                  <p className="text-[10.5px] text-[#8C8275]">Used for customer distance matching on the Raffu Grid.</p>
                 </div>
 
                 {/* Certified Machine Specialties */}

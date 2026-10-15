@@ -81,7 +81,7 @@ const ATELIER_PRESETS = [
 
 // Helper to split raw stored address into manual Shop No. and map-detected street address
 function parseAddressParts(rawAddress: string, userId?: string) {
-  let stored = typeof window !== 'undefined' && userId ? localStorage.getItem(`darzi_studio_shop_no_${userId}`) : null
+  let stored = typeof window !== 'undefined' && userId ? (localStorage.getItem(`raffu_studio_shop_no_${userId}`) || localStorage.getItem(`darzi_studio_shop_no_${userId}`)) : null
   let sNo = (stored || '').trim()
   let street = (rawAddress || '').trim()
 
@@ -144,50 +144,7 @@ export function StudioProfileView({
   const [customUrl, setCustomUrl] = useState('')
   const [isMapModalOpen, setIsMapModalOpen] = useState(false)
 
-  // Edit Atelier Identity Quick Modal State (Studio Name & Lead Craftsman)
-  const [isEditAtelierModalOpen, setIsEditAtelierModalOpen] = useState(false)
-  const [draftStudioName, setDraftStudioName] = useState('')
-  const [draftName, setDraftName] = useState('')
-  const [editAtelierSaving, setEditAtelierSaving] = useState(false)
 
-  const openEditAtelierModal = () => {
-    setDraftStudioName(studioName || '')
-    setDraftName(name || '')
-    setIsEditAtelierModalOpen(true)
-  }
-
-  const handleSaveEditAtelier = async () => {
-    const sName = draftStudioName.trim() || studioName
-    const cName = draftName.trim() || name
-
-    setStudioName(sName)
-    setName(cName)
-
-    const updates: Partial<UserType> = {
-      id: user.id,
-      email: user.email,
-      studioName: sName,
-      name: cName,
-    }
-
-    setEditAtelierSaving(true)
-    try {
-      const res = await updateUserProfile(updates)
-      if (onUpdateUser) {
-        onUpdateUser({
-          ...user,
-          ...updates,
-          ...(res?.user || {}),
-        })
-      }
-      toast.success('Atelier name & craftsman updated!', { position: 'top-center' })
-      setIsEditAtelierModalOpen(false)
-    } catch (err: any) {
-      toast.error(err?.message || 'Failed to update atelier profile', { position: 'top-center' })
-    } finally {
-      setEditAtelierSaving(false)
-    }
-  }
 
   const [specialties, setSpecialties] = useState<string[]>(() => {
     if (user.specialties && Array.isArray(user.specialties) && user.specialties.length > 0) {
@@ -210,7 +167,7 @@ export function StudioProfileView({
   const handleShopNoChange = (val: string) => {
     setShopNo(val)
     if (user?.id && typeof window !== 'undefined') {
-      localStorage.setItem(`darzi_studio_shop_no_${user.id}`, val)
+      localStorage.setItem(`raffu_studio_shop_no_${user.id}`, val)
     }
   }
 
@@ -615,9 +572,9 @@ export function StudioProfileView({
   }
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6 animate-in fade-in duration-200">
+    <div className="w-full max-w-full space-y-6 animate-in fade-in duration-200 min-w-0">
       {/* ── Page Header ── */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[#E8E1D5] pb-5">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4 border-b border-[#E8E1D5] pb-4 sm:pb-5">
         <div>
           <div className="flex items-center gap-2 mb-1">
             <span className="size-2 rounded-full bg-[#9E593B]" />
@@ -625,23 +582,23 @@ export function StudioProfileView({
               Partner Workbench
             </span>
           </div>
-          <h1 className="text-2xl sm:text-3xl font-bold font-serif text-[#1E2229]">
+          <h1 className="text-xl sm:text-3xl font-bold font-serif text-[#1E2229]">
             Studio Configuration
           </h1>
-          <p className="text-xs sm:text-sm text-[#6B7280] mt-1">
+          <p className="text-xs sm:text-sm text-[#6B7280] mt-0.5 sm:mt-1">
             Manage your atelier identity, master tailor credentials, and craft capabilities.
           </p>
         </div>
 
-        <div className="flex items-center gap-2.5 shrink-0">
+        <div className="flex items-center gap-2 sm:gap-2.5 shrink-0 w-full sm:w-auto">
           {onBack && (
             <button
               type="button"
               onClick={onBack}
-              className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-[#1E2229] hover:text-black bg-white hover:bg-[#FAF8F5] border border-[#E8E1D5] rounded-xl transition-colors cursor-pointer shadow-2xs"
+              className="flex-1 sm:flex-none justify-center flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-[#1E2229] hover:text-black bg-white hover:bg-[#FAF8F5] border border-[#E8E1D5] rounded-xl transition-colors cursor-pointer shadow-2xs"
             >
               <ArrowLeft size={13} />
-              <span>Back to Cockpit</span>
+              <span>Back</span>
             </button>
           )}
 
@@ -649,7 +606,7 @@ export function StudioProfileView({
             type="button"
             onClick={() => handleSave()}
             disabled={saving}
-            className="flex items-center gap-2 px-4 py-2 text-xs font-bold text-white bg-[#9E593B] hover:bg-[#8A4C32] rounded-xl transition-all cursor-pointer shadow-sm active:scale-95 disabled:opacity-50"
+            className="flex-1 sm:flex-none justify-center flex items-center gap-2 px-4 py-2 text-xs font-bold text-white bg-[#9E593B] hover:bg-[#8A4C32] rounded-xl transition-all cursor-pointer shadow-sm active:scale-95 disabled:opacity-50"
           >
             {saving ? (
               <span>Saving...</span>
@@ -670,7 +627,7 @@ export function StudioProfileView({
         <div className="p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-800 flex items-center gap-2 animate-in fade-in">
           <Check size={16} className="text-emerald-600 shrink-0" />
           <span className="font-semibold">
-            Atelier profile successfully saved to database! Updates are live across the Darzi Grid.
+            Atelier profile successfully saved to database! Updates are live across the Raffu Grid.
           </span>
         </div>
       )}
@@ -682,11 +639,11 @@ export function StudioProfileView({
       )}
 
       {/* ── Tab Switcher ── */}
-      <div className="flex items-center gap-2 border-b border-[#E8E1D5] pb-px">
+      <div className="flex items-center gap-2 border-b border-[#E8E1D5] pb-px mb-2 overflow-x-auto no-scrollbar scroll-smooth">
         <button
           type="button"
           onClick={() => setActiveSubTab('profile')}
-          className={`flex items-center gap-2 px-4 py-2.5 text-xs font-bold transition-all border-b-2 cursor-pointer ${activeSubTab === 'profile'
+          className={`flex items-center gap-2 px-3.5 sm:px-4 py-2.5 text-xs font-bold transition-all border-b-2 cursor-pointer shrink-0 ${activeSubTab === 'profile'
               ? 'border-[#9E593B] text-[#9E593B]'
               : 'border-transparent text-[#6B7280] hover:text-[#1E2229]'
             }`}
@@ -698,7 +655,7 @@ export function StudioProfileView({
         <button
           type="button"
           onClick={() => setActiveSubTab('craft')}
-          className={`flex items-center gap-2 px-4 py-2.5 text-xs font-bold transition-all border-b-2 cursor-pointer ${activeSubTab === 'craft'
+          className={`flex items-center gap-2 px-3.5 sm:px-4 py-2.5 text-xs font-bold transition-all border-b-2 cursor-pointer shrink-0 ${activeSubTab === 'craft'
               ? 'border-[#9E593B] text-[#9E593B]'
               : 'border-transparent text-[#6B7280] hover:text-[#1E2229]'
             }`}
@@ -712,7 +669,7 @@ export function StudioProfileView({
         <button
           type="button"
           onClick={() => setActiveSubTab('catalog')}
-          className={`flex items-center gap-2 px-4 py-2.5 text-xs font-bold transition-all border-b-2 cursor-pointer ${activeSubTab === 'catalog'
+          className={`flex items-center gap-2 px-3.5 sm:px-4 py-2.5 text-xs font-bold transition-all border-b-2 cursor-pointer shrink-0 ${activeSubTab === 'catalog'
               ? 'border-[#9E593B] text-[#9E593B]'
               : 'border-transparent text-[#6B7280] hover:text-[#1E2229]'
             }`}
@@ -728,44 +685,44 @@ export function StudioProfileView({
           <PriceCatalogView user={user} />
         </div>
       ) : (
-        <form onSubmit={handleSave} className="space-y-6">
+        <form onSubmit={handleSave} className="space-y-7 sm:space-y-8">
           {activeSubTab === 'profile' ? (
-            <div className="space-y-6">
+            <div className="space-y-7 sm:space-y-8">
             {/* Atelier Identity & Branding Card */}
-            <div className="p-5 sm:p-6 rounded-2xl bg-white border border-[#E8E1D5] shadow-2xs space-y-4">
-              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                <div className="flex items-center gap-4">
+            <div className="p-4 sm:p-7 rounded-2xl bg-white border border-[#E8E1D5] shadow-2xs space-y-4 sm:space-y-5 min-w-0">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 sm:gap-5">
+                <div className="flex items-center gap-3.5 sm:gap-4 min-w-0 flex-1">
                   <StudioAvatar
                     avatar={avatar}
                     name={studioName || name || 'Master Tailor'}
                     size="xl"
                     shape="rounded"
                     showStatusDot={true}
-                    className="border border-[#E8E1D5]"
+                    className="border border-[#E8E1D5] shrink-0"
                   />
 
-                  <div>
+                  <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <h2 className="text-lg sm:text-xl font-serif font-bold text-[#1E2229]">
+                      <h2 className="text-base sm:text-xl font-serif font-bold text-[#1E2229] truncate max-w-[200px] sm:max-w-none">
                         {studioName || 'Your Atelier Name'}
                       </h2>
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200 shrink-0">
                         <span className="size-1.5 rounded-full bg-emerald-500" />
                         Verified Atelier
                       </span>
                     </div>
-                    <p className="text-xs text-[#6B7280] mt-0.5">
+                    <p className="text-xs text-[#6B7280] mt-0.5 truncate">
                       Lead Craftsman: <strong className="text-[#1E2229]">{name || 'Master Tailor'}</strong>
                     </p>
-                    <div className="flex items-center gap-2 text-[11px] text-[#6B7280] mt-1 flex-wrap">
-                      <span className="bg-[#FAF3EC] text-[#9E593B] px-1.5 py-0.5 rounded font-bold text-[10px]">
-                        Direct Studio Settlement
+                    <div className="flex items-center gap-1.5 sm:gap-2 text-[11px] text-[#6B7280] mt-1 flex-wrap">
+                      <span className="bg-[#FAF3EC] text-[#9E593B] px-1.5 py-0.5 rounded font-bold text-[10px] shrink-0">
+                        Direct Settlement
                       </span>
                       <span>·</span>
                       <button
                         type="button"
                         onClick={() => setIsMapModalOpen(true)}
-                        className="truncate max-w-[200px] hover:text-[#9E593B] transition-colors cursor-pointer text-left underline decoration-dotted underline-offset-2"
+                        className="truncate max-w-[140px] sm:max-w-[200px] hover:text-[#9E593B] transition-colors cursor-pointer text-left underline decoration-dotted underline-offset-2"
                         title="Click to adjust map pin"
                       >
                         {buildFullAddress(shopNo, mapStreetAddress) || area || 'Studio Address'}
@@ -776,7 +733,7 @@ export function StudioProfileView({
                           <button
                             type="button"
                             onClick={() => setIsMapModalOpen(true)}
-                            className="text-emerald-700 hover:text-[#9E593B] font-semibold flex items-center gap-1 cursor-pointer transition-colors"
+                            className="text-emerald-700 hover:text-[#9E593B] font-semibold flex items-center gap-1 cursor-pointer transition-colors shrink-0"
                             title="Click to adjust GPS pin"
                           >
                             <span className="size-1.5 rounded-full bg-emerald-500 inline-block" />
@@ -790,15 +747,6 @@ export function StudioProfileView({
 
                 {/* Photo & Profile Actions */}
                 <div className="flex items-center gap-2 flex-wrap w-full sm:w-auto">
-                  <button
-                    type="button"
-                    onClick={openEditAtelierModal}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-[#9E593B]/30 bg-[#FAF3EC] hover:bg-[#9E593B] text-xs font-bold text-[#9E593B] hover:text-white transition-all cursor-pointer shadow-2xs"
-                  >
-                    <Pencil size={13} />
-                    <span>Edit Atelier</span>
-                  </button>
-
                   <input
                     key="atelier-avatar-file-input"
                     id="atelier-avatar-file-input"
@@ -909,8 +857,8 @@ export function StudioProfileView({
             </div>
 
             {/* Form Fields Grid */}
-            <div className="p-5 sm:p-6 rounded-2xl bg-white border border-[#E8E1D5] shadow-2xs space-y-5">
-              <div className="border-b border-[#E8E1D5] pb-2.5 flex items-center justify-between">
+            <div className="p-4 sm:p-7 rounded-2xl bg-white border border-[#E8E1D5] shadow-2xs space-y-6 min-w-0">
+              <div className="border-b border-[#E8E1D5] pb-3 flex items-center justify-between">
                 <div>
                   <h3 className="font-bold text-sm text-[#1E2229]">
                     Atelier & Master Tailor Details
@@ -927,8 +875,8 @@ export function StudioProfileView({
                 )}
               </div>
 
-              <div className="grid sm:grid-cols-2 gap-4">
-                <div className="space-y-1.5">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 min-w-0">
+                <div className="space-y-1.5 min-w-0">
                   <label className="text-[11px] font-bold text-[#6B7280] uppercase tracking-wider">
                     Atelier / Studio Name *
                   </label>
@@ -944,7 +892,7 @@ export function StudioProfileView({
                   />
                 </div>
 
-                <div className="space-y-1.5">
+                <div className="space-y-1.5 min-w-0">
                   <label className="text-[11px] font-bold text-[#6B7280] uppercase tracking-wider">
                     Lead Master Tailor *
                   </label>
@@ -961,12 +909,12 @@ export function StudioProfileView({
                 </div>
 
                 {/* ── Shop No. / Workshop Unit (ONLY address field entered manually) ── */}
-                <div className="space-y-1.5 sm:col-span-2">
-                  <div className="flex items-center justify-between">
+                <div className="space-y-1.5 sm:col-span-2 min-w-0">
+                  <div className="flex items-center justify-between gap-1 flex-wrap">
                     <label className="text-[11px] font-bold text-[#6B7280] uppercase tracking-wider">
                       Shop No. / Workshop Unit *
                     </label>
-                    <span className="text-[10px] font-semibold text-[#9E593B] bg-[#FAF3EC] px-2 py-0.5 rounded-full border border-[#E8E1D5]">
+                    <span className="text-[10px] font-semibold text-[#9E593B] bg-[#FAF3EC] px-2 py-0.5 rounded-full border border-[#E8E1D5] shrink-0">
                       Manual Entry
                     </span>
                   </div>
@@ -989,18 +937,18 @@ export function StudioProfileView({
                 </div>
 
                 {/* ── Interactive Live Map Pin Trigger ── */}
-                <div className="space-y-1.5 sm:col-span-2">
-                  <div className="flex items-center justify-between">
-                    <label className="text-[11px] font-bold text-[#6B7280] uppercase tracking-wider">
-                      Workshop Map Pin (Exact GPS Location) *
+                <div className="space-y-1.5 sm:col-span-2 min-w-0">
+                  <div className="flex items-center justify-between gap-1 flex-wrap">
+                    <label className="text-[11px] font-bold text-[#6B7280] uppercase tracking-wider leading-snug">
+                      Workshop Map Pin (GPS Location) *
                     </label>
                     {lat && lng ? (
-                      <span className="text-[11px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full flex items-center gap-1">
+                      <span className="text-[11px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full flex items-center gap-1 shrink-0">
                         <span className="size-1.5 rounded-full bg-emerald-500" />
                         Location Pinned
                       </span>
                     ) : (
-                      <span className="text-[11px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">
+                      <span className="text-[11px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full shrink-0">
                         Pin not set
                       </span>
                     )}
@@ -1008,44 +956,46 @@ export function StudioProfileView({
                   <button
                     type="button"
                     onClick={() => setIsMapModalOpen(true)}
-                    className="w-full flex items-center gap-3 px-4 py-3 rounded-xl border border-[#E8E1D5] bg-[#FAF8F5] hover:bg-white hover:border-[#9E593B] text-left transition-all cursor-pointer group shadow-2xs"
+                    className="w-full flex items-center justify-between gap-2.5 px-3.5 sm:px-4 py-3 rounded-xl border border-[#E8E1D5] bg-[#FAF8F5] hover:bg-white hover:border-[#9E593B] text-left transition-all cursor-pointer group shadow-2xs min-w-0"
                   >
-                    <AnimatedLocationPin
-                      size={22}
-                      isConfirmed={Boolean(lat && lng)}
-                    />
-                    <div className="flex-1 min-w-0">
-                      <div className="text-xs font-bold text-[#1E2229] group-hover:text-[#9E593B] transition-colors truncate">
-                        {lat && lng ? 'Workshop Location Pinned' : 'Choose Exact Location on Map'}
-                      </div>
-                      <div className="text-[11px] text-[#6B7280] truncate mt-0.5">
-                        {lat && lng
-                          ? `${mapStreetAddress || area || 'Pinned Workshop'}${postcode ? ` (${postcode})` : ''}`
-                          : 'Tap to position your pin on the live interactive map & auto-detect coordinates'}
+                    <div className="flex items-center gap-2.5 sm:gap-3 min-w-0 flex-1">
+                      <AnimatedLocationPin
+                        size={22}
+                        isConfirmed={Boolean(lat && lng)}
+                      />
+                      <div className="min-w-0 flex-1">
+                        <div className="text-xs font-bold text-[#1E2229] group-hover:text-[#9E593B] transition-colors truncate">
+                          {lat && lng ? 'Workshop Location Pinned' : 'Choose Exact Location on Map'}
+                        </div>
+                        <div className="text-[11px] text-[#6B7280] truncate mt-0.5">
+                          {lat && lng
+                            ? `${mapStreetAddress || area || 'Pinned Workshop'}${postcode ? ` (${postcode})` : ''}`
+                            : 'Tap to position your pin on the live interactive map & auto-detect coordinates'}
+                        </div>
                       </div>
                     </div>
-                    <span className="text-[11px] font-bold text-[#9E593B] bg-[#FAF3EC] border border-[#E8E1D5] px-2.5 py-1 rounded-lg shrink-0 group-hover:bg-[#9E593B] group-hover:text-white transition-colors">
+                    <span className="text-[11px] font-bold text-[#9E593B] bg-[#FAF3EC] border border-[#E8E1D5] px-2 sm:px-2.5 py-1 rounded-lg shrink-0 group-hover:bg-[#9E593B] group-hover:text-white transition-colors">
                       {lat && lng ? 'Adjust Pin' : 'Pin on Map'}
                     </span>
                   </button>
                 </div>
 
                 {/* ── Auto-Synced Address Details (Derived via Map Changes) ── */}
-                <div className="space-y-2 sm:col-span-2">
-                  <div className="flex items-center justify-between">
-                    <label className="text-[11px] font-bold text-[#6B7280] uppercase tracking-wider flex items-center gap-1.5">
+                <div className="space-y-2 sm:col-span-2 min-w-0">
+                  <div className="flex flex-wrap items-start gap-1">
+                    <label className="text-[11px] font-bold text-[#6B7280] uppercase tracking-wider flex items-center gap-1.5 flex-wrap">
                       <span>Map-Detected Workshop Address</span>
                       <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
                         Auto-synced via Pin
                       </span>
                     </label>
-                    <span className="text-[10px] text-[#6B7280]">
+                    <span className="text-[10px] text-[#6B7280] ml-auto hidden sm:inline">
                       Updated dynamically via Map Pin
                     </span>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 p-3 rounded-xl bg-[#FAF8F5] border border-[#E8E1D5]">
-                    <div className="space-y-1">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 p-3 rounded-xl bg-[#FAF8F5] border border-[#E8E1D5] min-w-0">
+                    <div className="space-y-1 min-w-0">
                       <span className="text-[10px] font-bold text-[#6B7280] uppercase tracking-wider block">
                         Street / Road (Via Map)
                       </span>
@@ -1057,7 +1007,7 @@ export function StudioProfileView({
                       </div>
                     </div>
 
-                    <div className="space-y-1">
+                    <div className="space-y-1 min-w-0">
                       <span className="text-[10px] font-bold text-[#6B7280] uppercase tracking-wider block">
                         Area / Neighborhood (Via Map)
                       </span>
@@ -1069,7 +1019,7 @@ export function StudioProfileView({
                       </div>
                     </div>
 
-                    <div className="space-y-1">
+                    <div className="space-y-1 min-w-0">
                       <span className="text-[10px] font-bold text-[#6B7280] uppercase tracking-wider block">
                         Postcode / ZIP / PIN (Via Map)
                       </span>
@@ -1083,22 +1033,24 @@ export function StudioProfileView({
                   </div>
 
                   {/* Combined Dispatch Address Preview */}
-                  <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-emerald-50/60 border border-emerald-200/80 text-[11px] text-[#1E2229]">
-                    <MapPin size={13} className="text-emerald-700 shrink-0" />
-                    <span className="font-bold text-emerald-900 shrink-0">Client Delivery Address:</span>
-                    <span className="truncate font-medium text-emerald-950">
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 px-3 py-2 rounded-lg bg-emerald-50/60 border border-emerald-200/80 text-[11px] text-[#1E2229] min-w-0">
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <MapPin size={13} className="text-emerald-700 shrink-0" />
+                      <span className="font-bold text-emerald-900">Client Delivery Address:</span>
+                    </div>
+                    <span className="truncate font-medium text-emerald-950 min-w-0 flex-1">
                       {[shopNo, mapStreetAddress || area, postcode ? `(${postcode})` : ''].filter(Boolean).join(', ') || 'Enter Shop No. and pin your workshop location on the map'}
                     </span>
                   </div>
                 </div>
 
-                <div className="space-y-1.5">
-                  <div className="flex items-center justify-between">
+                <div className="space-y-1.5 min-w-0">
+                  <div className="flex items-center justify-between gap-1 flex-wrap">
                     <label className="text-[11px] font-bold text-[#6B7280] uppercase tracking-wider">
                       SMS Alert Phone (Dispatch) *
                     </label>
                     {!isPhoneChanged ? (
-                      <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full flex items-center gap-1">
+                      <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full flex items-center gap-1 shrink-0">
                         <span className="size-1.5 rounded-full bg-emerald-500" />
                         Verified
                       </span>
@@ -1152,7 +1104,7 @@ export function StudioProfileView({
                   )}
                 </div>
 
-                <div className="space-y-1.5">
+                <div className="space-y-1.5 min-w-0">
                   <label className="text-[11px] font-bold text-[#6B7280] uppercase tracking-wider">
                     Partner Email (Read-Only)
                   </label>
@@ -1171,63 +1123,14 @@ export function StudioProfileView({
               </div>
             </div>
 
-            {/* ── Partner Operations & Legal Policies ── */}
-            <div className="p-5 rounded-2xl bg-white border border-[#E8E1D5] shadow-2xs space-y-3">
-              <h3 className="text-xs font-bold uppercase tracking-wider text-[#9E593B]">
-                Atelier Operations Desk &amp; Legal Policies
-              </h3>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-                <Link
-                  href="/contact"
-                  className="p-3 rounded-xl border border-[#E8E1D5] hover:border-[#9E593B] bg-[#FAF8F5] hover:bg-white transition-all text-left group"
-                >
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="size-6 rounded-md bg-[#FAF3EC] text-[#9E593B] grid place-items-center group-hover:scale-110 transition-transform">
-                      <Headphones size={13} />
-                    </span>
-                    <ArrowRight size={12} className="text-[#A1A4AB] group-hover:translate-x-0.5 transition-transform" />
-                  </div>
-                  <div className="text-xs font-bold text-[#1E2229]">Partner Desk</div>
-                  <div className="text-[10px] text-[#6B7280]">Urgent dispatch &amp; disputes</div>
-                </Link>
-
-                <Link
-                  href="/support"
-                  className="p-3 rounded-xl border border-[#E8E1D5] hover:border-emerald-600 bg-[#FAF8F5] hover:bg-white transition-all text-left group"
-                >
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="size-6 rounded-md bg-emerald-50 text-emerald-700 grid place-items-center group-hover:scale-110 transition-transform">
-                      <ShieldCheck size={13} />
-                    </span>
-                    <ArrowRight size={12} className="text-[#A1A4AB] group-hover:translate-x-0.5 transition-transform" />
-                  </div>
-                  <div className="text-xs font-bold text-[#1E2229]">SLA Guidelines</div>
-                  <div className="text-[10px] text-[#6B7280]">PIN intake &amp; 48h rules</div>
-                </Link>
-
-                <Link
-                  href="/privacy"
-                  className="p-3 rounded-xl border border-[#E8E1D5] hover:border-blue-600 bg-[#FAF8F5] hover:bg-white transition-all text-left group"
-                >
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="size-6 rounded-md bg-blue-50 text-blue-700 grid place-items-center group-hover:scale-110 transition-transform">
-                      <Lock size={13} />
-                    </span>
-                    <ArrowRight size={12} className="text-[#A1A4AB] group-hover:translate-x-0.5 transition-transform" />
-                  </div>
-                  <div className="text-xs font-bold text-[#1E2229]">Partner Privacy</div>
-                  <div className="text-[10px] text-[#6B7280]">Workshop &amp; payout policy</div>
-                </Link>
-              </div>
-            </div>
 
             {/* Bottom Nav */}
-            <div className="flex items-center justify-between pt-2">
+            <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-2">
               {onSignOut && (
                 <button
                   type="button"
                   onClick={onSignOut}
-                  className="flex items-center gap-1.5 text-xs font-semibold text-[#6B7280] hover:text-rose-600 transition-colors cursor-pointer"
+                  className="flex items-center justify-center sm:justify-start gap-1.5 py-2 text-xs font-semibold text-[#6B7280] hover:text-rose-600 transition-colors cursor-pointer"
                 >
                   <LogOut size={14} />
                   <span>Sign Out of Atelier</span>
@@ -1237,7 +1140,7 @@ export function StudioProfileView({
               <button
                 type="button"
                 onClick={() => setActiveSubTab('craft')}
-                className="flex items-center gap-2 px-5 py-2.5 bg-[#1E2229] hover:bg-black text-white text-xs font-bold rounded-xl transition-all cursor-pointer shadow-xs ml-auto"
+                className="flex items-center justify-center gap-2 px-5 py-2.5 bg-[#1E2229] hover:bg-black text-white text-xs font-bold rounded-xl transition-all cursor-pointer shadow-xs sm:ml-auto w-full sm:w-auto"
               >
                 <span>Next: Craft & Specialisms</span>
                 <ArrowRight size={14} />
@@ -1246,16 +1149,16 @@ export function StudioProfileView({
           </div>
         ) : (
           /* TAB 2: CRAFT & SPECIALISMS */
-          <div className="space-y-6">
+          <div className="space-y-6 sm:space-y-7 min-w-0">
             {/* Primary Node Territory Section */}
-            <div className="p-5 sm:p-6 rounded-2xl bg-white border border-[#E8E1D5] shadow-2xs space-y-4">
-              <div className="space-y-1.5">
-                <div className="flex items-center justify-between">
+            <div className="p-4 sm:p-7 rounded-2xl bg-white border border-[#E8E1D5] shadow-2xs space-y-4 min-w-0">
+              <div className="space-y-1.5 min-w-0">
+                <div className="flex items-center justify-between gap-1 flex-wrap">
                   <label className="text-[11px] font-bold text-[#6B7280] uppercase tracking-wider">
                     Primary Node Territory (Radius)
                   </label>
                   {lat && lng && (
-                    <span className="text-[10px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
+                    <span className="text-[10px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full shrink-0">
                       Radius Centered on Live Pin
                     </span>
                   )}
@@ -1273,26 +1176,26 @@ export function StudioProfileView({
                   />
                 </div>
                 <p className="text-[11px] text-[#6B7280]">
-                  Catchment zone for Darzi courier allocation and customer radius matching (5-mile radius).
+                  Catchment zone for Raffu courier allocation and customer radius matching (5-mile radius).
                 </p>
               </div>
             </div>
 
             {/* Machine Specialties & Capabilities */}
-            <div className="p-5 sm:p-6 rounded-2xl bg-white border border-[#E8E1D5] shadow-2xs space-y-4">
-              <div className="border-b border-[#E8E1D5] pb-2 flex items-center justify-between">
+            <div className="p-4 sm:p-7 rounded-2xl bg-white border border-[#E8E1D5] shadow-2xs space-y-4 min-w-0">
+              <div className="border-b border-[#E8E1D5] pb-2 flex items-center justify-between gap-2 flex-wrap">
                 <div>
                   <h3 className="font-bold text-sm text-[#1E2229]">Workshop Specialisms & Machinery</h3>
                   <p className="text-xs text-[#6B7280] mt-0.5">
                     Select the alteration and bespoke services your sewing bench and pressers support.
                   </p>
                 </div>
-                <span className="text-xs font-bold text-[#9E593B] bg-[#FAF3EC] px-2.5 py-1 rounded-lg border border-[#E8E1D5]">
+                <span className="text-xs font-bold text-[#9E593B] bg-[#FAF3EC] px-2.5 py-1 rounded-lg border border-[#E8E1D5] shrink-0">
                   {specialties.length} Selected
                 </span>
               </div>
 
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+              <div className="grid grid-cols-1 xs:grid-cols-2 sm:grid-cols-4 gap-2.5">
                 {SPECIALTIES.map((spec) => {
                   const selected = specialties.includes(spec)
                   return (
@@ -1300,7 +1203,7 @@ export function StudioProfileView({
                       key={spec}
                       type="button"
                       onClick={() => toggleSpecialty(spec)}
-                      className={`p-3 rounded-xl border text-xs font-medium text-left transition-all cursor-pointer flex items-center justify-between ${selected
+                      className={`p-3 rounded-xl border text-xs font-medium text-left transition-all cursor-pointer flex items-center justify-between min-w-0 ${selected
                           ? 'bg-[#FAF3EC] border-[#9E593B] text-[#9E593B] font-bold shadow-2xs'
                           : 'bg-white border-[#E8E1D5] text-[#1E2229] hover:bg-[#FAF8F5]'
                         }`}
@@ -1314,7 +1217,7 @@ export function StudioProfileView({
             </div>
 
             {/* Workshop Capacity & Bench Setup */}
-            <div className="p-5 sm:p-6 rounded-2xl bg-white border border-[#E8E1D5] shadow-2xs space-y-4">
+            <div className="p-4 sm:p-7 rounded-2xl bg-white border border-[#E8E1D5] shadow-2xs space-y-4 min-w-0">
               <div className="border-b border-[#E8E1D5] pb-2">
                 <h3 className="font-bold text-sm text-[#1E2229]">Atelier Capacity & Bench Machinery</h3>
                 <p className="text-xs text-[#6B7280] mt-0.5">
@@ -1322,8 +1225,8 @@ export function StudioProfileView({
                 </p>
               </div>
 
-              <div className="grid sm:grid-cols-3 gap-4">
-                <div className="space-y-1.5">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="space-y-1.5 min-w-0">
                   <label className="text-[11px] font-bold text-[#6B7280] uppercase tracking-wider flex items-center gap-1">
                     <Gauge size={12} />
                     Daily Capacity (Garments/Day)
@@ -1340,7 +1243,7 @@ export function StudioProfileView({
                   />
                 </div>
 
-                <div className="space-y-1.5">
+                <div className="space-y-1.5 min-w-0">
                   <label className="text-[11px] font-bold text-[#6B7280] uppercase tracking-wider flex items-center gap-1">
                     <Wrench size={12} />
                     Sewing Bench Machines
@@ -1357,7 +1260,7 @@ export function StudioProfileView({
                   />
                 </div>
 
-                <div className="space-y-1.5">
+                <div className="space-y-1.5 min-w-0">
                   <label className="text-[11px] font-bold text-[#6B7280] uppercase tracking-wider flex items-center gap-1">
                     <Clock size={12} />
                     Weekly Operating Hours
@@ -1375,28 +1278,28 @@ export function StudioProfileView({
               </div>
             </div>
 
-            {/* Stripe Escrow Card */}
-            <div className="p-5 rounded-2xl bg-[#FAF8F5] border border-[#E8E1D5] flex items-center justify-between gap-4">
-              <div className="flex items-center gap-3">
-                <div className="size-10 rounded-xl bg-white border border-[#E8E1D5] text-[#9E593B] grid place-items-center shadow-2xs">
+            {/* Direct Studio Settlement Card */}
+            <div className="p-4 sm:p-5 rounded-2xl bg-[#FAF8F5] border border-[#E8E1D5] flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4 min-w-0">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="size-10 rounded-xl bg-white border border-[#E8E1D5] text-[#9E593B] grid place-items-center shadow-2xs shrink-0">
                   <CreditCard size={18} />
                 </div>
-                <div>
+                <div className="min-w-0 flex-1">
                   <div className="text-xs font-bold text-[#1E2229]">Direct Studio Settlement</div>
-                  <div className="text-[11px] text-[#6B7280]">Customer pays standard alteration price directly at pickup.</div>
+                  <div className="text-[11px] text-[#6B7280] truncate">Customer pays standard alteration price directly at pickup.</div>
                 </div>
               </div>
-              <span className="text-[10px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full whitespace-nowrap">
+              <span className="text-[10px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full whitespace-nowrap self-start sm:self-auto shrink-0">
                 Connected & Verified
               </span>
             </div>
 
             {/* Bottom Nav */}
-            <div className="flex items-center justify-between pt-2">
+            <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-2">
               <button
                 type="button"
                 onClick={() => setActiveSubTab('profile')}
-                className="flex items-center gap-1.5 text-xs font-semibold text-[#1E2229] hover:text-[#9E593B] transition-colors cursor-pointer"
+                className="flex items-center justify-center sm:justify-start gap-1.5 py-2 text-xs font-semibold text-[#1E2229] hover:text-[#9E593B] transition-colors cursor-pointer"
               >
                 <ArrowLeft size={14} />
                 <span>Back to Profile</span>
@@ -1406,7 +1309,7 @@ export function StudioProfileView({
                 type="button"
                 onClick={() => handleSave()}
                 disabled={saving}
-                className="flex items-center gap-2 px-6 py-2.5 bg-[#9E593B] hover:bg-[#8A4C32] text-white text-xs font-bold rounded-xl transition-all cursor-pointer shadow-sm active:scale-95 disabled:opacity-50"
+                className="flex items-center justify-center gap-2 px-6 py-2.5 bg-[#9E593B] hover:bg-[#8A4C32] text-white text-xs font-bold rounded-xl transition-all cursor-pointer shadow-sm active:scale-95 disabled:opacity-50 w-full sm:w-auto"
               >
                 {saving ? (
                   <span>Saving Atelier Profile...</span>
@@ -1426,96 +1329,7 @@ export function StudioProfileView({
     )}
 
       {/* ── Edit Atelier Identity Modal ── */}
-      {isEditAtelierModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-200">
-          <div className="relative w-full max-w-md bg-white rounded-2xl border border-[#E8E1D5] shadow-2xl overflow-hidden flex flex-col">
-            {/* Modal Header */}
-            <div className="px-6 py-4 border-b border-[#E8E1D5] flex items-center justify-between bg-[#FAF8F5]">
-              <div className="flex items-center gap-3">
-                <div className="size-10 rounded-xl bg-[#FAF3EC] text-[#9E593B] border border-[#E8E1D5] flex items-center justify-center">
-                  <Store size={18} />
-                </div>
-                <div>
-                  <h3 className="text-base font-bold text-[#1E2229]">
-                    Edit Atelier Details
-                  </h3>
-                  <p className="text-xs text-[#6B7280]">
-                    Update your studio identity and lead master tailor
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsEditAtelierModalOpen(false)}
-                className="p-2 text-[#6B7280] hover:text-[#1E2229] hover:bg-stone-200/50 rounded-xl transition-colors cursor-pointer"
-              >
-                <X size={16} />
-              </button>
-            </div>
 
-            {/* Modal Body */}
-            <div className="p-6 space-y-4">
-              <div className="space-y-1.5">
-                <label className="text-[11px] font-bold text-[#6B7280] uppercase tracking-wider">
-                  Atelier / Studio Name *
-                </label>
-                <input
-                  key="modal-draft-studio-name-input"
-                  id="modal-draft-studio-name-input"
-                  type="text"
-                  required
-                  placeholder="e.g. Mayfair Sartoria or Atelier Studio"
-                  value={draftStudioName || ''}
-                  onChange={(e) => setDraftStudioName(e.target.value)}
-                  className="w-full px-3.5 py-2.5 text-xs text-[#1E2229] font-semibold bg-white border border-[#E8E1D5] rounded-xl focus:outline-none focus:border-[#9E593B] transition-colors"
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-[11px] font-bold text-[#6B7280] uppercase tracking-wider">
-                  Lead Master Tailor *
-                </label>
-                <input
-                  key="modal-draft-craftsman-name-input"
-                  id="modal-draft-craftsman-name-input"
-                  type="text"
-                  required
-                  placeholder="e.g. Master Tailor or Craftsman Name"
-                  value={draftName || ''}
-                  onChange={(e) => setDraftName(e.target.value)}
-                  className="w-full px-3.5 py-2.5 text-xs text-[#1E2229] font-semibold bg-white border border-[#E8E1D5] rounded-xl focus:outline-none focus:border-[#9E593B] transition-colors"
-                />
-              </div>
-            </div>
-
-            {/* Modal Footer */}
-            <div className="px-6 py-4 border-t border-[#E8E1D5] bg-[#FAF8F5] flex items-center justify-end gap-2.5">
-              <button
-                type="button"
-                onClick={() => setIsEditAtelierModalOpen(false)}
-                className="px-4 py-2 rounded-xl border border-[#E8E1D5] bg-white hover:bg-[#FAF8F5] text-xs font-semibold text-[#6B7280] transition-colors cursor-pointer"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleSaveEditAtelier}
-                disabled={editAtelierSaving}
-                className="px-5 py-2 rounded-xl bg-[#9E593B] hover:bg-[#8A4C32] text-white text-xs font-bold transition-all shadow-xs active:scale-95 cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
-              >
-                {editAtelierSaving ? (
-                  <span>Saving...</span>
-                ) : (
-                  <>
-                    <Check size={14} />
-                    <span>Save & Apply</span>
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Uber-Style Locality Picker Google Map Modal */}
       <UberMapModal
