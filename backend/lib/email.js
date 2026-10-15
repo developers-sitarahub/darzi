@@ -434,11 +434,12 @@ function buildWelcomeEmailHtml({
   const defaultCustomerUrl =
     process.env.CUSTOMER_SITE_URL ||
     process.env.FRONTEND_URL ||
-    "http://localhost:3000";
+    process.env.CLIENT_URL ||
+    "";
   const defaultStudioUrl =
     process.env.STUDIO_SITE_URL ||
     process.env.STUDIO_URL ||
-    "http://localhost:3001";
+    "";
 
   const effectivePortalUrl =
     portalUrl || (isStudio ? defaultStudioUrl : defaultCustomerUrl);
@@ -682,11 +683,12 @@ async function sendWelcomeEmail({
   const defaultCustomerUrl =
     process.env.CUSTOMER_SITE_URL ||
     process.env.FRONTEND_URL ||
-    "http://localhost:3000";
+    process.env.CLIENT_URL ||
+    "";
   const defaultStudioUrl =
     process.env.STUDIO_SITE_URL ||
     process.env.STUDIO_URL ||
-    "http://localhost:3001";
+    "";
   const effectivePortalUrl =
     portalUrl || (isStudio ? defaultStudioUrl : defaultCustomerUrl);
   const contactUrl = `${effectivePortalUrl.replace(/\/$/, "")}/contact`;
