@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom'
 import Image from 'next/image'
 import {
   Building2,
+  HelpCircle,
   Info,
   LifeBuoy,
   LogOut,
@@ -13,7 +14,6 @@ import {
   Phone,
   Receipt,
   Scissors,
-  Sparkles,
   User as UserIcon,
   Wallet,
   X,
@@ -516,7 +516,7 @@ export function Header({ currentScreen, go, user, isAuthLoading, onOpenAuth, onS
                     onClick={() => nav('how-it-works')}
                     className="w-full flex items-center gap-4 py-3.5 px-2 text-left text-[16px] font-semibold text-[#111827] hover:bg-gray-50 active:bg-gray-100 rounded-xl transition-colors cursor-pointer group"
                   >
-                    <Sparkles size={20} strokeWidth={2.2} className="text-[#111827] shrink-0" />
+                    <HelpCircle size={20} strokeWidth={2.2} className="text-[#111827] shrink-0" />
                     <span>How it Works</span>
                   </button>
 
@@ -547,7 +547,7 @@ export function Header({ currentScreen, go, user, isAuthLoading, onOpenAuth, onS
                     onClick={() => nav('how-it-works')}
                     className="w-full flex items-center gap-4 py-3.5 px-2 text-left text-[16px] font-semibold text-[#111827] hover:bg-gray-50 active:bg-gray-100 rounded-xl transition-colors cursor-pointer group"
                   >
-                    <Sparkles size={20} strokeWidth={2.2} className="text-[#111827] shrink-0" />
+                    <HelpCircle size={20} strokeWidth={2.2} className="text-[#111827] shrink-0" />
                     <span>How it Works</span>
                   </button>
 

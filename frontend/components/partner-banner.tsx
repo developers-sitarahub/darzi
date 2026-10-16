@@ -1,7 +1,7 @@
 'use client'
 
 import Image from 'next/image'
-import { ArrowRight, Banknote, Calendar, CheckCircle2, ShoppingBag, Store } from 'lucide-react'
+import { ArrowRight, Banknote, Calendar, CheckCircle2, ShoppingBag } from 'lucide-react'
 import { type Screen } from './data'
 
 export function PartnerBanner({ go }: { go: (s: Screen) => void }) {
@@ -13,9 +13,6 @@ export function PartnerBanner({ go }: { go: (s: Screen) => void }) {
           
           {/* Left Column: Copy & Benefit Pillars */}
           <div className="lg:col-span-7">
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1 text-xs font-semibold text-[#F59E0B] mb-4">
-              <Store size={13} /> Partner Store Portal · Tailors &amp; Fashion Retailers
-            </span>
 
             <h2 className="font-serif text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight leading-[1.1] mb-4">
               Drive customer footfall<br />

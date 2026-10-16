@@ -1,7 +1,7 @@
 'use client'
 
 import Image from 'next/image'
-import { ArrowRight, CheckCircle2, MapPin, Scissors, ShieldCheck, Sparkles, Store } from 'lucide-react'
+import { ArrowRight, CheckCircle2, MapPin, Scissors, ShieldCheck, Store } from 'lucide-react'
 import { type Screen } from './data'
 import { useApp } from './app-provider'
 
@@ -109,9 +109,6 @@ export function HowItWorksPreview({ go }: { go: (s: Screen) => void }) {
           </div>
 
           <div className="relative z-10 max-w-[560px]">
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1 text-xs font-semibold text-[#F59E0B] mb-4">
-              <Sparkles size={12} /> Standardized Upfront Pricing · Certified Neighborhood Ateliers
-            </span>
             <h3 className="font-serif text-2xl sm:text-3xl lg:text-4xl font-bold leading-snug mb-3">
               Ready to get your clothes altered?
             </h3>

@@ -2,7 +2,6 @@
 
 import { HeroSection } from './hero-section'
 import { HowItWorksPreview } from './how-it-works-preview'
-import { PartnerBanner } from './partner-banner'
 import { ServiceGrid } from './service-grid'
 import { TestimonialsSection } from './testimonials-section'
 import { TrustBar } from './trust-bar'
@@ -58,12 +57,7 @@ export function HomeView({
       {/* 4. Simple 4-Step Journey */}
       <HowItWorksPreview go={go} />
 
-      {/* 8. Partner Banner for Master Tailors (Rapido Captain / Uber Driver style) */}
-      {!(user && (user.role === 'CUSTOMER' || user.role !== 'STUDIO')) && (
-        <PartnerBanner go={go} />
-      )}
-
-      {/* 9. Client Stories & Craftsmanship Standards */}
+      {/* 5. Client Stories & Craftsmanship Standards */}
       <TestimonialsSection />
     </div>
   )
