@@ -181,35 +181,43 @@ export const TESTIMONIALS: Array<{ quote: string; author: string; role: string; 
 export const FAQS = [
   {
     q: 'What is Raffu?',
-    a: 'Raffu connects you with certified neighborhood master tailor studios for precision garment adjustments, suit refitting, denim original-hem preservation, and authentic darning with transparent upfront menu pricing and a 100% Fit Guarantee.',
+    a: 'Raffu connects you with vetted local tailoring studios for clothing alterations and repairs. You get upfront pricing, simple booking, and a fit guarantee on every garment.',
   },
   {
-    q: 'Is Raffu a doorstep tailoring service?',
-    a: 'No. Raffu is not a doorstep tailoring service where someone sews on a living room sofa. Precision alterations demand heavy industrial machinery—including blindstitchers for invisible wool cuffs, high-tension chainstitch units for denim roping, multi-thread overlockers, and vacuum steam pressing tables. These machines cannot operate in a living room. Raffu operates through certified brick-and-mortar tailor ateliers with verified master artisans.',
+    q: 'Do you offer doorstep tailoring?',
+    a: 'No, all work is done in professional partner studios. High-quality alterations need specialized machines—like blindstitchers for cuffs, chainstitch units for denim, and vacuum steam presses—that cannot be brought to a home. You can visit a nearby studio for an in-person fitting or book a courier pickup.',
   },
   {
-    q: 'Do I need to take measurements or pre-fit my clothes before booking?',
-    a: 'No, not at all! You never need to measure, pin, or guess your size. When you visit your assigned master tailor atelier, the artisan measures and chalks your garment in person. If you prefer courier pickup, you can include a sample garment that already fits you perfectly, and the studio will replicate its exact measurements.',
+    q: 'Do I need to measure or pin my clothes before booking?',
+    a: 'No. If you visit a studio, the tailor will measure and pin your garments during your fitting. If you prefer courier pickup, you can include a sample garment that fits you well, and the tailor will match its measurements.',
   },
   {
-    q: 'How does Raffu preserve original hems on designer jeans?',
-    a: 'Our partner studios use precision original-hem reattachment. The factory-washed distress, fading, and chainstitching are carefully detached, the denim leg is shortened to your exact inseam, and the original hem is seamlessly re-attached so your jeans retain their authentic factory wash.',
+    q: 'How do you preserve original hems on jeans?',
+    a: 'Our tailors carefully detach the original factory-finished hem, shorten the jeans to your requested inseam, and reattach the original distressed hem using matching thread so your jeans keep their factory look.',
   },
   {
-    q: 'What is authentic Raffu (invisible darning / rafugari)?',
-    a: 'Raffu (traditional rafugari) is the delicate craft of thread-by-thread invisible reweaving. Master artisans extract identical yarns from unexposed inner seams of your garment and manually reconstruct the broken warp and weft across tears, moth holes, or denim blowouts without ugly patches.',
+    q: 'What suit and blazer alterations can I book?',
+    a: 'Our partner studios handle sleeve shortening, taking in or letting out the waist, adjusting chest fit, tapering trousers, and correcting collar rolls.',
   },
   {
-    q: 'What is the Raffu 100% Fit Guarantee?',
-    a: 'Every single booking is protected by our zero-risk Fit Guarantee. When you collect your altered garment, you try it on in the studio fitting room. If any minor tweak is needed, your partner atelier alters it complimentary within 24 to 48 hours.',
+    q: 'What is invisible darning (Raffu)?',
+    a: 'Raffu is the traditional craft of thread-by-thread mending. A skilled artisan weaves matching yarn taken from hidden inner seams directly into fabric tears, moth holes, or worn denim to restore the garment without visible patches.',
+  },
+  {
+    q: 'How does the Fit Guarantee work?',
+    a: 'If your altered clothes do not fit properly when you try them on, let us know within 48 hours. The partner studio will make any needed adjustments free of charge.',
   },
   {
     q: 'How does pricing work?',
-    a: 'All prices on Raffu are standardized, fixed, and published upfront before you book. Unlike unorganized roadside tailors with fluctuating rates, Raffu offers clear menu pricing with zero surprise studio surcharges.',
+    a: 'Every service has a fixed price listed on our website before you book. You pay the exact price shown, with no hidden fees or haggling at the counter.',
   },
   {
-    q: 'What are the turnaround times?',
-    a: 'Standard alterations are completed within 48 to 72 hours. Express same-day and next-day turnaround options are also available across participating partner studios.',
+    q: 'How long do alterations take?',
+    a: 'Standard alterations take 2 to 3 days. Express same-day or next-day turnaround is also available at participating studios.',
+  },
+  {
+    q: 'How do you vet partner studios?',
+    a: 'We evaluate every tailor and studio in person before they join Raffu. We inspect their machinery, review sample work, and ensure they meet our standards for clean finishing and reliable service.',
   },
 ]
 

@@ -76,7 +76,7 @@ export function HomeView({
               Everything You Need to Know About Raffu
             </h2>
             <p className="text-xs sm:text-sm text-[#6B7280] mt-2">
-              Certified neighborhood master tailor studios, standardized menu pricing, and guaranteed fit.
+              Clear answers about our partner studios, alteration services, and fit guarantee.
             </p>
           </div>
           <FaqAccordion />
