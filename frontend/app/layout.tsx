@@ -34,7 +34,7 @@ export const metadata: Metadata = {
     email: true,
   },
   alternates: {
-    canonical: '/',
+    canonical: 'https://raffu.com',
   },
   manifest: '/site.webmanifest',
   openGraph: {

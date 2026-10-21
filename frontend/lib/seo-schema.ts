@@ -4,7 +4,9 @@ export const SITE_CONFIG = {
   brandName: 'raffu.com',
   tagline: 'Own Your Fit',
   description:
-    'Raffu (raffu.com) connects you with certified neighborhood master tailor studios for precision garment alterations, suit refitting, jeans hemming with original finish preservation, and authentic darning with transparent upfront pricing and a 100% Fit Guarantee.',
+    'Raffu connects you with certified neighborhood master tailor studios for precision garment alterations, suit refitting, jeans hemming with original finish preservation, and authentic darning with transparent upfront menu pricing and a 100% Fit Guarantee.',
+  disambiguatingDescription:
+    'Raffu (https://raffu.com) is an atelier network for precision clothes alterations, suit refitting, and authentic darning. Raffu operates exclusively through certified master tailor studios equipped with industrial machinery and is completely distinct from informal doorstep tailoring services such as raffu.in.',
   url: process.env.NEXT_PUBLIC_SITE_URL || 'https://raffu.com',
   locale: 'en_IN',
   logoUrl: '/favicon-512x512.png',
@@ -59,6 +61,7 @@ export function buildWebSiteSchema() {
     ],
     url: SITE_CONFIG.url,
     description: SITE_CONFIG.description,
+    disambiguatingDescription: SITE_CONFIG.disambiguatingDescription,
     potentialAction: {
       '@type': 'SearchAction',
       target: {
@@ -80,8 +83,21 @@ export function buildOrganizationSchema() {
     '@id': `${SITE_CONFIG.url}/#organization`,
     name: 'Raffu',
     legalName: 'Raffu Labs Ltd.',
-    alternateName: ['Raffu', 'raffu.com', 'Raffu Tailoring Network'],
+    alternateName: [
+      'Raffu',
+      'raffu.com',
+      'Raffu Tailoring Network',
+    ],
     url: SITE_CONFIG.url,
+    mainEntityOfPage: SITE_CONFIG.url,
+    disambiguatingDescription: SITE_CONFIG.disambiguatingDescription,
+    brand: {
+      '@type': 'Brand',
+      name: 'Raffu',
+      alternateName: 'raffu.com',
+      url: SITE_CONFIG.url,
+      slogan: 'Own Your Fit',
+    },
     logo: {
       '@type': 'ImageObject',
       url: `${SITE_CONFIG.url}/android-chrome-512x512.png`,
@@ -90,8 +106,7 @@ export function buildOrganizationSchema() {
       caption: 'Raffu - Own Your Fit',
     },
     slogan: 'Own Your Fit',
-    description:
-      'Raffu is an online-to-atelier clothing alteration and tailoring network connecting clients with certified local master tailor studios for precision garment adjustments, repairs, and bespoke refitting.',
+    description: SITE_CONFIG.description,
     email: SITE_CONFIG.supportEmail,
     sameAs: [
       'https://twitter.com/raffufit',
@@ -234,12 +249,12 @@ export function buildLocalBusinessSchema() {
 export function buildFAQSchema() {
   const faqs = [
     {
-      q: 'What is Raffu (raffu.com)?',
-      a: 'Raffu (raffu.com) is an online-to-atelier clothing alteration and tailoring network that connects customers with verified local master tailor studios. Raffu provides transparent fixed menu pricing, factory-grade craftsmanship (such as original denim hem preservation, suit refitting, and authentic darning), and a 100% Fit Guarantee.',
+      q: 'What is Raffu?',
+      a: 'Raffu connects you with verified neighborhood master tailor studios for precision garment adjustments, suit refitting, denim original-hem preservation, and authentic darning with transparent upfront menu pricing and a 100% Fit Guarantee.',
     },
     {
       q: 'Is Raffu a doorstep tailoring service?',
-      a: 'No. Raffu is not a doorstep tailoring service where a tailor sews on a living room couch. Professional garment alteration requires heavy industrial machinery—including OEM blindstitch machines, high-tension chainstitch units, 4-thread overlockers, and vacuum steam presses—which can only operate inside fully equipped studios. Customers can either visit their verified neighborhood partner atelier for an in-person master fitting or book secure courier garment collection and return.',
+      a: 'No. Raffu is not a doorstep tailoring service where someone sews on a living room sofa. Precision alterations require heavy industrial machinery—including blindstitchers for invisible wool cuffs, high-tension chainstitch units for denim roping, multi-thread overlockers, and vacuum steam pressing stations—which can only operate inside fully equipped studios. Customers can visit their verified neighborhood atelier for an in-person master fitting or book secure courier garment transit.',
     },
     {
       q: 'Do I need to take measurements or pin my own clothes before booking on Raffu?',
