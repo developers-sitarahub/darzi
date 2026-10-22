@@ -17,15 +17,15 @@ const inter = Inter({
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_CONFIG.url),
   title: {
-    default: 'Raffu | Clothes Alteration & Tailoring Studios',
+    default: 'Raffu - Own Your Fit',
     template: '%s | Raffu',
   },
-  description: SITE_CONFIG.description,
+  description: SITE_CONFIG.metaDescription,
   keywords: SITE_CONFIG.keywords,
-  authors: [{ name: 'Raffu', url: SITE_CONFIG.url }],
+  authors: [{ name: 'Raffu Technologies Ltd.', url: SITE_CONFIG.url }],
   creator: 'Raffu',
-  publisher: 'Raffu',
-  applicationName: 'Raffu',
+  publisher: 'Raffu Technologies Ltd.',
+  applicationName: 'Raffu - Own Your Fit',
   category: 'Clothing Alterations & Tailoring',
   formatDetection: {
     telephone: true,
@@ -35,10 +35,10 @@ export const metadata: Metadata = {
   },
   manifest: '/site.webmanifest',
   openGraph: {
-    title: 'Raffu | Clothes Alteration & Tailoring Studios',
-    description: SITE_CONFIG.description,
+    title: 'Raffu - Own Your Fit | Clothes Alterations & Tailoring',
+    description: SITE_CONFIG.metaDescription,
     url: SITE_CONFIG.url,
-    siteName: 'Raffu',
+    siteName: 'Raffu - Own Your Fit',
     locale: 'en_IN',
     type: 'website',
     images: [
@@ -52,8 +52,8 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Raffu | Clothes Alteration & Tailoring Studios',
-    description: SITE_CONFIG.description,
+    title: 'Raffu - Own Your Fit | Clothes Alterations & Tailoring',
+    description: SITE_CONFIG.metaDescription,
     creator: '@raffufit',
     site: '@raffufit',
     images: ['/og-image.jpg'],

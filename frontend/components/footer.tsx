@@ -206,7 +206,7 @@ export function Footer({ go }: { go: (s: Screen) => void }) {
 
         {/* Bottom */}
         <div className="mt-8 text-center text-xs sm:text-sm text-[#6B7280]">
-          <p>© {new Date().getFullYear()} Raffu Labs Ltd. All rights reserved.</p>
+          <p>© {new Date().getFullYear()} Raffu Technologies Ltd. All rights reserved.</p>
         </div>
       </footer>
 
@@ -260,7 +260,7 @@ export function Footer({ go }: { go: (s: Screen) => void }) {
                   Privacy & Data Policy
                 </h3>
                 <p className="text-xs sm:text-sm text-[#5A5D64] leading-relaxed">
-                  Raffu Labs Ltd. values your privacy. We only collect essential customer data (fitting measurements, order status, contact phone/email) to facilitate studio bookings and maintain your secure Digital Fit Passport.
+                  Raffu Technologies Ltd. values your privacy. We only collect essential customer data (fitting measurements, order status, contact phone/email) to facilitate studio bookings and maintain your secure Digital Fit Passport.
                 </p>
                 <p className="text-xs sm:text-sm text-[#5A5D64] leading-relaxed">
                   Your payment information is encrypted end-to-end and never stored in plain text. We do not sell personal data to third parties.
@@ -306,15 +306,15 @@ export function Footer({ go }: { go: (s: Screen) => void }) {
                 </p>
                 <div className="space-y-3 pt-2">
                   <a
-                    href="mailto:developer.sitarahub@gmail.com"
+                    href="mailto:support@raffu.in"
                     className="flex items-center gap-3 rounded-xl bg-white border border-[#EBE6DF] p-3 text-xs font-semibold text-[#0F1115] hover:border-[#9E593B] transition-colors"
                   >
                     <Mail size={16} className="text-[#9E593B]" />
-                    <span>developer.sitarahub@gmail.com</span>
+                    <span>support@raffu.in</span>
                   </a>
                   <div className="flex items-center gap-3 rounded-xl bg-white border border-[#EBE6DF] p-3 text-xs font-semibold text-[#0F1115]">
                     <Phone size={16} className="text-[#10B981]" />
-                    <span>+1 (800) 555-RAFFU / +44 (20) 7946 0912</span>
+                    <span>+91 800 555 RAFFU</span>
                   </div>
                 </div>
                 <button
