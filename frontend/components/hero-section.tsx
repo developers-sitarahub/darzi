@@ -496,7 +496,6 @@ export function HeroSection({ go, user, onOpenAuth, onQuickSearch, onStartBookin
             <div className="mb-6">
               <h1 className="text-3xl sm:text-[40px] lg:text-[44px] font-extrabold tracking-tight text-black leading-[1.12]">
                 Request an alteration
-                <span className="sr-only"> — Clothes Alteration &amp; Tailoring</span>
               </h1>
             </div>
 

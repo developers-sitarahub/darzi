@@ -3,20 +3,18 @@ import { HomeClient } from './home-client'
 import { buildFAQSchema, buildServiceCatalogSchema } from '@/lib/seo-schema'
 
 export const metadata: Metadata = {
-  title: {
-    absolute: 'Raffu - Own Your Fit | Clothes Alterations & Tailoring',
-  },
+  title: 'Raffu | Clothes Alteration & Tailoring Studios',
   description:
-    'Connect with verified local master tailors for precision clothes alterations, fittings, and repairs with upfront pricing and a 100% re-fit guarantee.',
+    'Find verified tailoring and alteration studios with transparent pricing. Explore trouser and denim hemming, suit alterations, and clothing repairs with Raffu.',
   alternates: {
     canonical: '/',
   },
   openGraph: {
-    title: 'Raffu - Own Your Fit | Clothes Alterations & Tailoring',
+    title: 'Raffu | Clothes Alteration & Tailoring Studios',
     description:
-      'Connect with verified local master tailors for precision clothes alterations, fittings, and repairs with upfront pricing and a 100% re-fit guarantee.',
+      'Discover local tailoring and alteration studios, transparent service pricing, and clothing repair services with Raffu.',
     url: 'https://raffu.com',
-    siteName: 'Raffu - Own Your Fit',
+    siteName: 'Raffu',
     locale: 'en_IN',
     type: 'website',
     images: [

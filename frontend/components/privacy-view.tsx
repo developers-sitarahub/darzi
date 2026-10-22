@@ -148,7 +148,7 @@ export function PrivacyView({ go }: { go: (s: Screen | string) => void }) {
                 1. Introduction &amp; Data Controller
               </h2>
               <p className="mb-3">
-                Raffu Technologies Ltd. (&quot;Raffu&quot;, &quot;we&quot;, &quot;our&quot;, &quot;us&quot;) operates an on-demand garment alteration and repair platform connecting customers with certified master tailor ateliers. We act as the data controller for your personal information.
+                Raffu Labs Ltd. (&quot;Raffu&quot;, &quot;we&quot;, &quot;our&quot;, &quot;us&quot;) operates an on-demand garment alteration and repair platform connecting customers with certified master tailor ateliers. We act as the data controller for your personal information.
               </p>
               <p>
                 We are committed to protecting your privacy and personal data under UK GDPR, the Data Protection Act 2018, and international data protection standards. We never sell, rent, or monetize your wardrobe data or body measurements to third-party advertisers.
@@ -464,13 +464,13 @@ export function PrivacyView({ go }: { go: (s: Screen | string) => void }) {
             <p className="flex items-center gap-2">
               <Mail size={15} className="text-[#9E593B]" />
               <strong className="text-[#0F1115]">Email:</strong>{' '}
-              <a href="mailto:support@raffu.in" className="text-[#9E593B] hover:underline">
-                support@raffu.in
+              <a href="mailto:developer.sitarahub@gmail.com" className="text-[#9E593B] hover:underline">
+                developer.sitarahub@gmail.com
               </a>
             </p>
             <p className="flex items-center gap-2">
               <Shield size={15} className="text-[#10B981]" />
-              <span className="text-[#5A5D64]">Raffu Technologies Ltd. &middot; Data Protection &amp; Atelier Compliance Desk</span>
+              <span className="text-[#5A5D64]">Raffu Labs Ltd. &middot; Data Protection &amp; Atelier Compliance Desk</span>
             </p>
           </div>
         </section>
