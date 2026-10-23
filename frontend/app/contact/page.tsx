@@ -3,16 +3,16 @@ import { ContactClient } from './contact-client'
 import { SITE_CONFIG, buildBreadcrumbSchema } from '@/lib/seo-schema'
 
 export const metadata: Metadata = {
-  title: 'Contact Us',
+  title: 'Contact Raffu Support',
   description:
-    'Have a question about your fitting or order? Contact the Raffu customer team by email or phone.',
+    'Questions about your alteration booking, studio visit, or order? Contact the official Raffu support team at support@raffu.com.',
   alternates: {
     canonical: '/contact',
   },
   openGraph: {
-    title: 'Contact Us | Raffu',
+    title: 'Contact Raffu | raffu.com',
     description:
-      'Have a question about your fitting or order? Contact the Raffu customer team by email or phone.',
+      'Questions about your alteration booking, studio visit, or order? Contact the official Raffu support team at support@raffu.com.',
     url: '/contact',
   },
 }
@@ -26,9 +26,10 @@ export default function ContactPage() {
     url: `${SITE_CONFIG.url}/contact`,
     mainEntity: {
       '@type': 'Organization',
+      '@id': `${SITE_CONFIG.url}/#organization`,
       name: SITE_CONFIG.name,
+      url: `${SITE_CONFIG.url}/`,
       email: SITE_CONFIG.supportEmail,
-      telephone: SITE_CONFIG.supportPhone,
     },
   }
 

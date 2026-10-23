@@ -5,14 +5,14 @@ import { SITE_CONFIG, buildBreadcrumbSchema } from '@/lib/seo-schema'
 export const metadata: Metadata = {
   title: 'About Raffu',
   description:
-    'Learn how Raffu connects you with local tailoring studios for simple, reliable clothing alterations and repairs.',
+    'Raffu (raffu.com) lets you book clothing alterations online with verified local tailor studios. You visit the studio for your fitting and collect your altered clothes there.',
   alternates: {
     canonical: '/about',
   },
   openGraph: {
-    title: 'About Raffu | Clothing Alterations & Repairs',
+    title: 'About Raffu | raffu.com',
     description:
-      'Learn how Raffu connects you with local tailoring studios for simple, reliable clothing alterations and repairs.',
+      'Raffu (raffu.com) lets you book clothing alterations online with verified local tailor studios. You visit the studio for your fitting and collect your altered clothes there.',
     url: '/about',
   },
 }
@@ -23,8 +23,9 @@ export default function AboutPage() {
     '@type': 'AboutPage',
     name: 'About Raffu',
     description:
-      'Learn how Raffu connects you with local tailoring studios for simple, reliable clothing alterations and repairs.',
+      'Raffu (raffu.com) lets you book clothing alterations online with verified local tailor studios. You visit the studio for your fitting and collect your altered clothes there.',
     url: `${SITE_CONFIG.url}/about`,
+    about: { '@id': `${SITE_CONFIG.url}/#organization` },
   }
 
   const breadcrumbSchema = buildBreadcrumbSchema([

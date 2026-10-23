@@ -40,11 +40,11 @@ const CRAFT_PILLARS = [
 const CRAFT_FAQS = [
   {
     q: 'Do I need to take measurements or pre-fit my clothes before booking?',
-    a: 'Not at all. You never need to measure, pin, or pre-fit anything yourself. Simply select your garment and service, and hand your clothes directly to your assigned master tailor, who handles all precision measurements and fitting in person.',
+    a: 'Not at all. You never need to measure, pin, or pre-fit anything yourself. Simply select your garment and service, and hand your clothes to the tailor when you visit the studio that accepted your order, who handles all precision measurements and fitting in person.',
   },
   {
     q: 'What if the garment fit is not 100% right upon collection?',
-    a: 'Every single booking is protected by our 100% Fit Guarantee. Try on your altered garment upon pickup or delivery. If any minor tweak is needed, your partner atelier alters it complimentary within 24 hours.',
+    a: 'Every single booking is protected by our 100% Fit Guarantee. Try on your altered garment at the studio when the tailor hands it over. If any minor tweak is needed, your partner atelier alters it complimentary within 24 hours.',
   },
   {
     q: 'How do you preserve original hems on denim and designer jeans?',

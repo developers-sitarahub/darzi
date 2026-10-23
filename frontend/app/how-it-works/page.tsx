@@ -3,16 +3,16 @@ import { HowItWorksClient } from './how-it-works-client'
 import { buildHowToSchema, buildBreadcrumbSchema } from '@/lib/seo-schema'
 
 export const metadata: Metadata = {
-  title: 'How It Works',
+  title: 'How Raffu Works',
   description:
-    'Simple 4-step clothing alterations with Raffu: Choose your service, visit a partner studio or book courier pickup, and try on with our fit guarantee.',
+    'How Raffu works: book your alteration on raffu.com, a nearby partner studio accepts your order, you visit the studio, the tailor alters your garment and hands it over to you there.',
   alternates: {
     canonical: '/how-it-works',
   },
   openGraph: {
-    title: 'How It Works | Clothing Alterations with Raffu',
+    title: 'How Raffu Works | Own Your Fit | raffu.com',
     description:
-      'Simple 4-step clothing alterations with Raffu: Choose your service, visit a partner studio or book courier pickup, and try on with our fit guarantee.',
+      'How Raffu works: book your alteration on raffu.com, a nearby partner studio accepts your order, you visit the studio, the tailor alters your garment and hands it over to you there.',
     url: '/how-it-works',
   },
 }

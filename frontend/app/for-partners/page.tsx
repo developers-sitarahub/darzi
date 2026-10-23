@@ -10,7 +10,7 @@ export const metadata: Metadata = {
     canonical: '/for-partners',
   },
   openGraph: {
-    title: 'Partner with Raffu | Tailoring Studio Network',
+    title: 'Partner with Raffu | raffu.com Tailoring Studio Network',
     description:
       'Join our network of tailoring studios. Get new local alteration customers, clear order details, and guaranteed payouts.',
     url: '/for-partners',
@@ -21,11 +21,9 @@ export default function ForPartnersPage() {
   const partnerServiceSchema = {
     '@context': 'https://schema.org',
     '@type': 'Service',
-    name: 'Raffu Tailor Partner Network Program',
+    name: 'Raffu Partner Studio Program',
     provider: {
-      '@type': 'Organization',
-      name: SITE_CONFIG.name,
-      url: SITE_CONFIG.url,
+      '@id': `${SITE_CONFIG.url}/#organization`,
     },
     description:
       'Partnership program connecting skilled local tailor ateliers with customers seeking professional alterations and fittings.',
