@@ -1,21 +1,13 @@
 import type { Metadata } from 'next'
 import { ForPartnersClient } from './for-partners-client'
-import { SITE_CONFIG, buildBreadcrumbSchema } from '@/lib/seo-schema'
+import { SITE_CONFIG, buildBreadcrumbSchema, buildPageMetadata } from '@/lib/seo-schema'
 
-export const metadata: Metadata = {
+export const metadata: Metadata = buildPageMetadata({
   title: 'Partner with Raffu',
   description:
-    'Join our network of tailoring studios. Get new local alteration customers, clear order details, and guaranteed payouts.',
-  alternates: {
-    canonical: '/for-partners',
-  },
-  openGraph: {
-    title: 'Partner with Raffu | raffu.com Tailoring Studio Network',
-    description:
-      'Join our network of tailoring studios. Get new local alteration customers, clear order details, and guaranteed payouts.',
-    url: '/for-partners',
-  },
-}
+    'Join the Raffu network of tailoring studios. Receive new local alteration orders, clear order details, and guaranteed payouts for your studio.',
+  path: '/for-partners',
+})
 
 export default function ForPartnersPage() {
   const partnerServiceSchema = {

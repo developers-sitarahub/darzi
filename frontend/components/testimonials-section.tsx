@@ -30,17 +30,17 @@ const CRAFT_PILLARS = [
   {
     icon: BadgeCheck,
     tag: 'Total Transparency',
-    title: 'Standardized Rates, Zero Surprises',
+    title: 'Standardized Rates, Total Clarity',
     description:
-      'Know the exact price before you book. Every service has clear, fixed rates based on standard atelier bench times—no awkward counter haggling, no unexpected surcharges at pickup.',
+      'Know the exact price before you book. Every service has clear, fixed rates based on standard atelier bench times, so the price you see is the price you pay.',
     badges: ['Upfront itemized pricing', 'Direct studio accountability'],
   },
 ]
 
 const CRAFT_FAQS = [
   {
-    q: 'Do I need to take measurements or pre-fit my clothes before booking?',
-    a: 'Not at all. You never need to measure, pin, or pre-fit anything yourself. Simply select your garment and service, and hand your clothes to the tailor when you visit the studio that accepted your order, who handles all precision measurements and fitting in person.',
+    q: 'Who takes the measurements for my alteration?',
+    a: 'Your tailor takes care of every measurement and fitting. Simply select your garment and service, and hand your clothes to the tailor when you visit the studio that accepted your order, who handles all precision measurements and fitting in person.',
   },
   {
     q: 'What if the garment fit is not 100% right upon collection?',

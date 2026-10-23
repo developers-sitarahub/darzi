@@ -1,21 +1,13 @@
 import type { Metadata } from 'next'
 import { ContactClient } from './contact-client'
-import { SITE_CONFIG, buildBreadcrumbSchema } from '@/lib/seo-schema'
+import { SITE_CONFIG, buildBreadcrumbSchema, buildPageMetadata } from '@/lib/seo-schema'
 
-export const metadata: Metadata = {
+export const metadata: Metadata = buildPageMetadata({
   title: 'Contact Raffu Support',
   description:
     'Questions about your alteration booking, studio visit, or order? Contact the official Raffu support team at support@raffu.com.',
-  alternates: {
-    canonical: '/contact',
-  },
-  openGraph: {
-    title: 'Contact Raffu | raffu.com',
-    description:
-      'Questions about your alteration booking, studio visit, or order? Contact the official Raffu support team at support@raffu.com.',
-    url: '/contact',
-  },
-}
+  path: '/contact',
+})
 
 export default function ContactPage() {
   const contactSchema = {

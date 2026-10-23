@@ -1,3 +1,4 @@
+import type { Metadata } from 'next'
 import { FAQS, type StoreOption } from '@/components/data'
 
 /**
@@ -12,9 +13,9 @@ export const SITE_CONFIG = {
   shortName: 'Raffu',
   brandName: 'raffu.com',
   tagline: 'Own Your Fit',
-  title: 'Raffu - Own Your Fit | Book Clothing Alterations Near You | raffu.com',
+  title: 'Raffu - Own Your Fit | Book Clothing Alterations | raffu.com',
   description:
-    'Raffu - Own Your Fit. raffu.com is the official site to book clothing alterations online. Choose your garment and fixed price, a nearby partner tailor studio accepts your order, you visit the studio for your fitting, and collect your altered clothes there.',
+    'Book clothing alterations online with Raffu. A nearby partner studio accepts your order, you visit for your fitting, and collect your perfectly fitted clothes.',
   url: CANONICAL_URL,
   locale: 'en_US',
   logoUrl: '/android-chrome-512x512.png',
@@ -79,6 +80,55 @@ export const SERVICE_FLOW_STEPS = [
 ]
 
 /**
+ * Complete metadata for an indexable page. Next.js replaces (not merges)
+ * `openGraph` and `twitter` per page, so each page sends the full set here.
+ */
+export function buildPageMetadata({
+  title,
+  description,
+  path,
+  absoluteTitle = false,
+}: {
+  title: string
+  description: string
+  path: string
+  /** For titles that already carry the brand and domain (the home page) */
+  absoluteTitle?: boolean
+}): Metadata {
+  const url = path === '/' ? SITE_CONFIG.url : `${SITE_CONFIG.url}${path}`
+  const fullTitle = absoluteTitle ? title : `${title} | ${SITE_CONFIG.brandName}`
+  const image = {
+    url: SITE_CONFIG.ogImage,
+    width: 1200,
+    height: 630,
+    alt: 'Raffu - Own Your Fit: book clothing alterations at raffu.com',
+  }
+
+  return {
+    title: absoluteTitle ? { absolute: title } : title,
+    description,
+    alternates: { canonical: url },
+    openGraph: {
+      title: fullTitle,
+      description,
+      url,
+      siteName: SITE_CONFIG.name,
+      locale: SITE_CONFIG.locale,
+      type: 'website',
+      images: [image],
+    },
+    twitter: {
+      card: 'summary_large_image',
+      title: fullTitle,
+      description,
+      site: SITE_CONFIG.socialHandles.twitter,
+      creator: SITE_CONFIG.socialHandles.twitter,
+      images: [image.url],
+    },
+  }
+}
+
+/**
  * WebSite structured data for search engine discovery and sitelinks
  */
 export function buildWebSiteSchema() {
@@ -94,14 +144,6 @@ export function buildWebSiteSchema() {
       '@id': `${SITE_CONFIG.url}/#organization`,
     },
     inLanguage: 'en-US',
-    potentialAction: {
-      '@type': 'SearchAction',
-      target: {
-        '@type': 'EntryPoint',
-        urlTemplate: `${SITE_CONFIG.url}/book?service={search_term_string}`,
-      },
-      'query-input': 'required name=search_term_string',
-    },
   }
 }
 

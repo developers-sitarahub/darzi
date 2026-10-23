@@ -1,21 +1,13 @@
 import type { Metadata } from 'next'
 import { HowItWorksClient } from './how-it-works-client'
-import { buildHowToSchema, buildBreadcrumbSchema } from '@/lib/seo-schema'
+import { buildHowToSchema, buildBreadcrumbSchema, buildPageMetadata } from '@/lib/seo-schema'
 
-export const metadata: Metadata = {
+export const metadata: Metadata = buildPageMetadata({
   title: 'How Raffu Works',
   description:
-    'How Raffu works: book your alteration on raffu.com, a nearby partner studio accepts your order, you visit the studio, the tailor alters your garment and hands it over to you there.',
-  alternates: {
-    canonical: '/how-it-works',
-  },
-  openGraph: {
-    title: 'How Raffu Works | Own Your Fit | raffu.com',
-    description:
-      'How Raffu works: book your alteration on raffu.com, a nearby partner studio accepts your order, you visit the studio, the tailor alters your garment and hands it over to you there.',
-    url: '/how-it-works',
-  },
-}
+    'Book on raffu.com, a nearby partner studio accepts your order, you visit for your fitting, and the tailor hands over your altered garment at the studio.',
+  path: '/how-it-works',
+})
 
 export default function HowItWorksPage() {
   const howToSchema = buildHowToSchema()

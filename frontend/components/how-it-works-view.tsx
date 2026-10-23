@@ -48,7 +48,7 @@ export function HowItWorksView({ go, onQuickSearch }: HowItWorksViewProps) {
     {
       num: '1',
       title: 'Book your alteration on raffu.com',
-      desc: 'Select your garment (trousers, jeans, shirts, dresses, blazers, or occasion wear) and the exact alteration needed. You review fixed, standardized pricing before confirming, with zero hidden fees or surprise studio surcharges.',
+      desc: 'Select your garment (trousers, jeans, shirts, dresses, blazers, or occasion wear) and the exact alteration needed. You review fixed, standardized pricing before confirming, so you know the exact price from the start.',
       tips: ['Standardized upfront rates', 'Custom fit notes & fabric options'],
       Illustration: Step1Illustration,
     },
@@ -395,7 +395,7 @@ export function HowItWorksView({ go, onQuickSearch }: HowItWorksViewProps) {
                 Fixed Transparent Rates
               </h3>
               <p className="text-xs sm:text-sm text-[#5A5D64] leading-relaxed">
-                No awkward dry cleaner price haggling. Every service has standardized pricing with OEM thread and steam press included.
+                Clear, fixed prices for every service, with OEM thread and steam press included.
               </p>
             </div>
 
